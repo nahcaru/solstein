@@ -52,6 +52,14 @@ Target OS is a Settings toggle in v0.1; helper-side config in v2 (Linux DE varia
 
 ## Tier 3 implementation notes (v2+)
 
-- Synthesize undocumented gesture-phase events consumed by the Dock (prior art: **Mac Mouse Fix** — review its license first; treat source as documentation of the technique).
+- Synthesize dock-swipe gesture-phase events consumed by the Dock. Uses **public** `CGEventTap`/`CGEventPost`; only the CGEvent field indices (55, 110, 132…) are undocumented — stable since macOS 10.11 (see prior art).
 - Phone streams `GesturePhase(progress)` at 60–90 Hz; helper maps progress → event deltas. Release <50% → macOS springs back (cancel); ≥50% → commits.
 - Version-gate per macOS release; auto-fallback to Tier 2 shortcuts on failure.
+
+### Prior art
+
+- [joshuarli/iss](https://github.com/joshuarli/iss) — minimal synthetic dock-swipe (Begin+End, high velocity); best starting point
+- [noah-nuebling/mac-mouse-fix](https://github.com/noah-nuebling/mac-mouse-fix) — production phased scrubbing. **MMF License restricts reuse: technique reference only, do not copy code**
+- Path A references: [ginkage/wearmouse](https://github.com/ginkage/wearmouse) (canonical `BluetoothHidDevice` sample, Apache-2.0), [jqssun/android-bt-remote](https://github.com/jqssun/android-bt-remote)
+- Descriptor validation: [Eleccelerator parser](https://eleccelerator.com/usbdescreqparser/) — run `HELM_DESCRIPTOR` through it before first pairing test
+- v2 BLE candidate: [`bluetooth_low_energy`](https://pub.dev/packages/bluetooth_low_energy) (PeripheralManager on Android & iOS) — evaluate before writing custom GATT channels
