@@ -1,0 +1,12 @@
+.DS_Store
+*.iml
+.idea/
+.omc/
+# Flutter (active once app/ is scaffolded)
+app/build/
+app/.dart_tool/
+app/.flutter-plugins*
+app/android/.gradle/
+app/android/local.properties
+helper/build/
+helper/.dart_tool/
