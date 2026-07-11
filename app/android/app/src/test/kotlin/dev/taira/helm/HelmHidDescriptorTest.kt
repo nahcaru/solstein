@@ -1,0 +1,40 @@
+package dev.taira.helm
+
+import org.junit.Assert.assertEquals
+import org.junit.Test
+
+/**
+ * Pins HELM_DESCRIPTOR byte-for-byte against docs/hid-descriptor.md.
+ * Descriptor bugs are silent (pairing succeeds, input never arrives), and
+ * macOS caches the descriptor per bond — so drift must fail loudly here.
+ */
+class HelmHidDescriptorTest {
+
+    private val golden = (
+        // Report ID 1: Mouse
+        "05 01 09 02 A1 01 85 01 09 01 A1 00 " +
+        "05 09 19 01 29 03 15 00 25 01 95 03 75 01 81 02 " +
+        "95 01 75 05 81 03 " +
+        "05 01 09 30 09 31 09 38 15 81 25 7F 75 08 95 03 81 06 " +
+        "05 0C 0A 38 02 95 01 81 06 C0 C0 " +
+        // Report ID 2: Keyboard
+        "05 01 09 06 A1 01 85 02 05 07 19 E0 29 E7 15 00 25 01 " +
+        "75 01 95 08 81 02 95 01 75 08 81 03 " +
+        "95 06 75 08 15 00 25 65 05 07 19 00 29 65 81 00 C0"
+    ).split(" ").map { it.toInt(16).toByte() }.toByteArray()
+
+    @Test
+    fun descriptorMatchesGoldenBytes() {
+        assertEquals(golden.toHex(), HelmHidDescriptor.BYTES.toHex())
+    }
+
+    @Test
+    fun releasePayloadsMatchReportSizes() {
+        assertEquals(5, HelmHidDescriptor.MOUSE_RELEASE_ALL.size)   // buttons + X/Y/wheel/pan
+        assertEquals(8, HelmHidDescriptor.KEYBOARD_RELEASE_ALL.size) // mods + reserved + 6 keys
+        assertEquals(0, HelmHidDescriptor.MOUSE_RELEASE_ALL.sumOf { it.toInt() })
+        assertEquals(0, HelmHidDescriptor.KEYBOARD_RELEASE_ALL.sumOf { it.toInt() })
+    }
+
+    private fun ByteArray.toHex() = joinToString(" ") { "%02X".format(it) }
+}
