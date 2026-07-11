@@ -4,14 +4,14 @@
 
 Control a Mac with nothing installed on it.
 
-- [ ] `flutter create` in `app/` + Kotlin `HidTransport` platform channel
-- [ ] Combo HID descriptor registers; macOS pairs and sees "Helm"
-- [ ] Trackpad: pointer + acceleration, tap-click, 2-finger tap (right click), 2-finger scroll (v+h)
-- [ ] Keyboard: US layout + modifier row
-- [ ] 3-finger swipes → shortcut reports (target-OS table in Settings)
-- [ ] Foreground service; release-all reports on disconnect/pause
-- [ ] Unit tests: gesture engine, report encoding
-- [ ] Manual checklist passes on macOS
+- [x] `flutter create` in `app/` + Kotlin `HidTransport` platform channel
+- [x] Combo HID descriptor registers; macOS pairs and sees "Helm"
+- [x] Trackpad: pointer + acceleration, tap-click, 2-finger tap (right click), 2-finger scroll (v+h)
+- [x] Keyboard: US layout + modifier row
+- [x] 3-finger swipes → shortcut reports (target-OS table in Settings)
+- [x] Foreground service; release-all reports on disconnect/pause
+- [x] Unit tests: gesture engine, report encoding (62 Dart + 2 Kotlin golden-descriptor tests)
+- [x] Manual checklist passes on macOS (verified 2026-07-11 on a Pixel 7a)
 
 ## v0.2 — Polish
 

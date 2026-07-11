@@ -24,7 +24,7 @@ IDLE ─pointer down─▶ TOUCHING(n)
   n=3: dominant-axis ≥ trigger→ SWIPE(dir): began/changed(progress)/ended
 ```
 
-Defaults (settings-tunable, unit-tested): tap timeout 250 ms · touch slop 8 px · swipe trigger 48 px · pointer acceleration `f(v)=v^1.4` clamped ±127/report.
+Defaults (settings-tunable, unit-tested): tap timeout 250 ms · touch slop 8 px · swipe trigger 48 px · pointer response linear (`f(d)=d`, distance-proportional; the host's own mouse acceleration is the only curve — exponent configurable) clamped ±127/report.
 
 ## InputEvent vocabulary
 
