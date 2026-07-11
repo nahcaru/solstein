@@ -10,3 +10,6 @@ app/android/.gradle/
 app/android/local.properties
 helper/build/
 helper/.dart_tool/
+
+# FVM Version Cache
+.fvm/
