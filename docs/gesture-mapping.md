@@ -19,12 +19,18 @@ IDLE ─pointer down─▶ TOUCHING(n)
   n=1: move ≥ slop            → POINTING (stream PointerMove)
        up < tapTimeout & slop → Tap (left click)
        long-press then move   → DRAGGING (button held)
+       tap, re-touch < tapDragTimeout, move → DRAGGING (tap-and-drag)
   n=2: move                   → SCROLLING (stream Scroll dx,dy)
+       fast horizontal (≥ flickVelocity, |dx|≥2|dy|) → PAGE_SWIPE(dir): phased
+       both fingers opposing-radial (apart/together) → ZOOM(in/out): phased
        up < tapTimeout        → RightTap
   n=3: dominant-axis ≥ trigger→ SWIPE(dir): began/changed(progress)/ended
+       up < tapTimeout        → MiddleTap (middle click)
+  n=4: mean finger↔centroid distance grows ≥ spreadRatio → SPREAD: phased
+       …or shrinks ≤ 1/spreadRatio → PINCH: phased (restore windows)
 ```
 
-Defaults (settings-tunable, unit-tested): tap timeout 250 ms · touch slop 8 px · swipe trigger 48 px · pointer response linear (`f(d)=d`, distance-proportional; the host's own mouse acceleration is the only curve — exponent configurable) clamped ±127/report.
+Defaults (settings-tunable, unit-tested): tap timeout 250 ms · touch slop 8 px · swipe trigger 48 px · tap-drag window 300 ms · page-flick velocity 0.6 px/ms · spread trigger ratio 1.4 · pointer response linear (`f(d)=d`, distance-proportional; the host's own mouse acceleration is the only curve — exponent configurable) clamped ±127/report.
 
 ## InputEvent vocabulary
 
@@ -33,7 +39,8 @@ sealed class InputEvent {}
 class PointerMove(int dx, int dy);
 class ButtonEvent(Button b, bool down);
 class Scroll(int dx, int dy);
-class KeyEvent(int usage, int modifiers, bool down);
+class KeyEvent(int usage, int modifiers, bool down);   // KeyInput in code
+class MediaTap(MediaKey key);                          // volume/playback/brightness
 class GesturePhase(GestureKind kind, Phase phase, double progress);
 ```
 
@@ -46,9 +53,20 @@ class GesturePhase(GestureKind kind, Phase phase, double progress);
 | 3-finger ↑ | `Ctrl+↑` Mission Control | `Win+Tab` Task View | `Super` Activities |
 | 3-finger ↓ | `Ctrl+↓` App Exposé | `Win+D` show desktop | `Super+D` |
 | 3-finger ←/→ | `Ctrl+←/→` Spaces | `Ctrl+Win+←/→` desktops | `Super+PgUp/PgDn` |
+| 2-finger fast flick ←/→ | `Cmd+[/]` back/forward | `Alt+←/→` | `Alt+←/→` |
+| 4-finger spread | `F11` show desktop | `Win+D` | `Super+D` |
+| 4-finger pinch | `F11` restore windows | `Win+D` | `Super+D` |
+| 2-finger pinch | `Cmd ±` zoom (discrete) | `Ctrl ±` | `Ctrl ±` |
 | 2-finger tap | right click | right click | right click |
+| 3-finger tap | middle click | middle click | middle click |
 
-Target OS is a Settings toggle in v0.1; helper-side config in v2 (Linux DE variants live there).
+Horizontal kinds (3-finger ←/→, page flicks) swap under natural scrolling — content follows fingers, like a real trackpad. Vertical kinds never invert.
+
+Two-finger zoom is a **discrete** Tier-1 approximation (`Cmd ±` steps): it works wherever those shortcuts do (browsers, editors, Finder), but not the continuous native pinch in Preview/Maps/Photos. **Smart zoom** (two-finger double-tap) and **rotate** have no system keyboard shortcut on macOS and cannot be done over Tier-1 HID — they wait for the v2 helper (Tier 2/3).
+
+Target OS is a Settings toggle in v0.1, guessed from the host's Bluetooth name on first connect and remembered per device (an explicit choice wins); helper-side config in v2 (Linux DE variants live there).
+
+Since the collapsed shortcuts toggle host modes, the transport keeps a host-mode estimate (vertical Exposé⇄desktop⇄Mission-Control level + desktop-shown flag) so repeated gestures never undo themselves; clicks/keys reset it.
 
 ## Tier 3 implementation notes (v2+)
 

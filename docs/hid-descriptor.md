@@ -1,6 +1,6 @@
 # HID Report Descriptor Spec
 
-One combo device, two report IDs. The keyboard report is what makes gestures possible without host software.
+One combo device, three report IDs. The keyboard report is what makes gestures possible without host software; the consumer report (v0.2) adds media keys.
 
 ## Registration (Kotlin)
 
@@ -64,6 +64,24 @@ val HELM_DESCRIPTOR = byteArrayOf(
     0x19, 0x00, 0x29, 0x65,
     0x81, 0x00,        //   Input (Data,Array) — 6-key rollover
     0xC0,
+
+    // ---------- Report ID 3: Consumer Control (media keys, v0.2) ----------
+    0x05, 0x0C,        // Usage Page (Consumer)
+    0x09, 0x01,        // Usage (Consumer Control)
+    0xA1, 0x01,        // Collection (Application)
+    0x85, 0x03,        //   Report ID (3)
+    0x15, 0x00, 0x25, 0x01,
+    0x75, 0x01, 0x95, 0x08,
+    0x0A, 0xCD, 0x00,  //   Play/Pause          (bit 0)
+    0x0A, 0xB5, 0x00,  //   Scan Next Track     (bit 1)
+    0x0A, 0xB6, 0x00,  //   Scan Previous Track (bit 2)
+    0x0A, 0xE9, 0x00,  //   Volume Up           (bit 3)
+    0x0A, 0xEA, 0x00,  //   Volume Down         (bit 4)
+    0x0A, 0xE2, 0x00,  //   Mute                (bit 5)
+    0x0A, 0x6F, 0x00,  //   Brightness Up       (bit 6)
+    0x0A, 0x70, 0x00,  //   Brightness Down     (bit 7)
+    0x81, 0x02,        //   Input (Data,Var,Abs)
+    0xC0,
 ).map { it.toByte() }.toByteArray()
 ```
 
@@ -88,6 +106,10 @@ Deltas > ±127 per frame are split across consecutive reports.
 | 0 | Modifiers: bit0 LCtrl, bit1 LShift, bit2 LAlt, bit3 LGUI/⌘, bits4–7 right-side |
 | 1 | Reserved 0x00 |
 | 2–7 | Up to 6 concurrent usage codes |
+
+### Consumer (ID 3) — 1 byte
+
+One bit per media function, in the order listed in the descriptor (bit 0 = Play/Pause … bit 7 = Brightness Down). Press = bit set, release = `0x00`; bit order mirrors the Dart `MediaKey` enum.
 
 **Every key sequence ends with an all-zero report.** Example — Mission Control:
 

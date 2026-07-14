@@ -43,7 +43,7 @@ abstract interface class InputSink {
   void send(InputEvent event);
   Stream<SinkState> get state;
   Set<Capability> get capabilities;
-  // {pointer, keyboard, discreteGesture, phasedGesture}
+  // {pointer, keyboard, discreteGesture, phasedGesture, mediaKeys}
 }
 ```
 
