@@ -19,9 +19,44 @@ class AppModel extends ChangeNotifier {
         showControl = false;
       }
       sinkState = s;
+      if (s == SinkState.connected) {
+        _transport.connectedDeviceId().then((id) async {
+          connectedDeviceId = id;
+          notifyListeners();
+          if (id != null) await _applyTargetOsForDevice(id);
+        });
+      } else {
+        connectedDeviceId = null;
+      }
       notifyListeners();
     });
   }
+
+  /// Applies this host's remembered target OS, or guesses it from the
+  /// Bluetooth name on first connect. An explicit Settings choice always
+  /// wins ([setTargetOs] stores it per device).
+  Future<void> _applyTargetOsForDevice(String id) async {
+    final prefs = await SharedPreferences.getInstance();
+    final stored = prefs.getInt('$_kTargetOs.$id');
+    TargetOs? os = stored != null ? TargetOs.values[stored] : null;
+    if (os == null) {
+      final devices = await _transport.bondedDevices();
+      for (final device in devices) {
+        if (device.id == id) {
+          os = guessTargetOs(device.name);
+          break;
+        }
+      }
+    }
+    if (os != null && os != targetOs) {
+      _transport.targetOs = os;
+      notifyListeners();
+    }
+  }
+
+  /// Address of the host currently receiving input; drives the list's
+  /// "which one am I controlling" indicator and switch-vs-reopen taps.
+  String? connectedDeviceId;
 
   /// Whether the UI should show the control surface (trackpad/keyboard)
   /// rather than the device list. The user can browse back to the list
@@ -55,6 +90,9 @@ class AppModel extends ChangeNotifier {
         pointerGain: pointerGain,
         scrollGain: scrollGain,
         naturalScroll: naturalScroll,
+        // macOS flips incoming scroll itself (its "natural scrolling"
+        // default); Windows/Linux deliver wheel/pan untouched.
+        hostInvertsScroll: targetOs == TargetOs.macos,
       );
 
   static const _kTargetOs = 'targetOs';
@@ -66,8 +104,10 @@ class AppModel extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     _transport.targetOs =
         TargetOs.values[prefs.getInt(_kTargetOs) ?? TargetOs.macos.index];
-    pointerGain = prefs.getDouble(_kPointerGain) ?? 1.0;
-    scrollGain = prefs.getDouble(_kScrollGain) ?? 1.0;
+    // Clamp: earlier builds persisted values outside the current 0.1–2.0
+    // slider range, which would crash the Slider widget.
+    pointerGain = (prefs.getDouble(_kPointerGain) ?? 1.0).clamp(0.1, 2.0);
+    scrollGain = (prefs.getDouble(_kScrollGain) ?? 1.0).clamp(0.1, 2.0);
     naturalScroll = prefs.getBool(_kNaturalScroll) ?? true;
     _transport.naturalScroll = naturalScroll;
     notifyListeners();
@@ -78,6 +118,9 @@ class AppModel extends ChangeNotifier {
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_kTargetOs, os.index);
+    // Remember the explicit choice for this host; it beats name-guessing.
+    final id = connectedDeviceId;
+    if (id != null) await prefs.setInt('$_kTargetOs.$id', os.index);
   }
 
   Future<void> setPointerGain(double gain) async {

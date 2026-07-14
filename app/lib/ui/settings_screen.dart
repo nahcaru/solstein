@@ -19,8 +19,9 @@ class SettingsScreen extends StatelessWidget {
           children: [
             ListTile(
               title: const Text('Computer runs'),
-              subtitle:
-                  const Text('Chooses which shortcuts 3-finger swipes send'),
+              subtitle: const Text(
+                  'Guessed from the computer\'s name on first connect; '
+                  'your choice here is remembered per computer'),
               trailing: DropdownButton<TargetOs>(
                 value: model.targetOs,
                 onChanged: (os) {
@@ -41,9 +42,9 @@ class SettingsScreen extends StatelessWidget {
               title: const Text('Pointer speed'),
               subtitle: Slider(
                 value: model.pointerGain,
-                min: 0.4,
-                max: 2.5,
-                divisions: 21,
+                min: 0.1,
+                max: 2.0,
+                divisions: 19,
                 label: '${model.pointerGain.toStringAsFixed(1)}×',
                 onChanged: model.setPointerGain,
               ),
@@ -52,9 +53,9 @@ class SettingsScreen extends StatelessWidget {
               title: const Text('Scroll speed'),
               subtitle: Slider(
                 value: model.scrollGain,
-                min: 0.4,
-                max: 2.5,
-                divisions: 21,
+                min: 0.1,
+                max: 2.0,
+                divisions: 19,
                 label: '${model.scrollGain.toStringAsFixed(1)}×',
                 onChanged: model.setScrollGain,
               ),

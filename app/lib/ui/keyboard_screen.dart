@@ -3,18 +3,50 @@ import 'package:flutter/material.dart';
 import '../core/input_event.dart';
 import '../core/input_sink.dart';
 import '../hid/keymap_us.dart';
+import '../hid/shortcut_tables.dart';
 
-/// Keyboard input: a text field that forwards keystrokes (US layout) plus a
-/// modifier/navigation row. Modifiers are one-shot (sticky-keys style):
-/// toggle ⌘, tap a key, modifier releases.
+/// Keyboard input: a text field that forwards keystrokes (US layout) plus
+/// modifier / navigation / media rows. Modifiers are one-shot (sticky-keys
+/// style): toggle ⌘, tap a key, modifier releases. The modifier lineup and
+/// labels follow the target OS.
 class KeyboardScreen extends StatefulWidget {
-  const KeyboardScreen({super.key, required this.sink});
+  const KeyboardScreen({super.key, required this.sink, required this.targetOs});
 
   final InputSink sink;
+  final TargetOs targetOs;
 
   @override
   State<KeyboardScreen> createState() => _KeyboardScreenState();
 }
+
+class _ModifierSpec {
+  const _ModifierSpec(this.label, this.bit);
+
+  final String label;
+  final int bit;
+}
+
+/// Modifier lineup per target OS: native order and naming.
+const Map<TargetOs, List<_ModifierSpec>> _modifierRows = {
+  TargetOs.macos: [
+    _ModifierSpec('⌃', Mod.lCtrl),
+    _ModifierSpec('⌥', Mod.lAlt),
+    _ModifierSpec('⌘', Mod.lGui),
+    _ModifierSpec('⇧', Mod.lShift),
+  ],
+  TargetOs.windows: [
+    _ModifierSpec('Ctrl', Mod.lCtrl),
+    _ModifierSpec('⊞ Win', Mod.lGui),
+    _ModifierSpec('Alt', Mod.lAlt),
+    _ModifierSpec('Shift', Mod.lShift),
+  ],
+  TargetOs.linux: [
+    _ModifierSpec('Ctrl', Mod.lCtrl),
+    _ModifierSpec('Super', Mod.lGui),
+    _ModifierSpec('Alt', Mod.lAlt),
+    _ModifierSpec('Shift', Mod.lShift),
+  ],
+};
 
 class _KeyboardScreenState extends State<KeyboardScreen> {
   final _controller = TextEditingController();
@@ -62,8 +94,22 @@ class _KeyboardScreenState extends State<KeyboardScreen> {
     }
   }
 
+  Widget _keyRow(List<Widget> keys) => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        child: Row(
+          children: [
+            for (var i = 0; i < keys.length; i++) ...[
+              if (i > 0) const SizedBox(width: 8),
+              Expanded(child: keys[i]),
+            ],
+          ],
+        ),
+      );
+
   @override
   Widget build(BuildContext context) {
+    final modifiers =
+        _modifierRows[widget.targetOs] ?? _modifierRows[TargetOs.macos]!;
     return Column(
       children: [
         Padding(
@@ -83,95 +129,90 @@ class _KeyboardScreenState extends State<KeyboardScreen> {
             ),
           ),
         ),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          alignment: WrapAlignment.center,
-          children: [
-            _ModChip(
-              label: '⌃',
-              active: _heldModifiers & Mod.lCtrl != 0,
-              onTap: () => _toggleModifier(Mod.lCtrl),
+        _keyRow([
+          for (final spec in modifiers)
+            _Key(
+              label: spec.label,
+              active: _heldModifiers & spec.bit != 0,
+              onTap: () => _toggleModifier(spec.bit),
             ),
-            _ModChip(
-              label: '⌥',
-              active: _heldModifiers & Mod.lAlt != 0,
-              onTap: () => _toggleModifier(Mod.lAlt),
-            ),
-            _ModChip(
-              label: '⌘',
-              active: _heldModifiers & Mod.lGui != 0,
-              onTap: () => _toggleModifier(Mod.lGui),
-            ),
-            _ModChip(
-              label: '⇧',
-              active: _heldModifiers & Mod.lShift != 0,
-              onTap: () => _toggleModifier(Mod.lShift),
-            ),
-            _KeyButton(
-                label: 'esc', onTap: () => _sendStroke(Usage.escape, Mod.none)),
-            _KeyButton(
-                label: 'tab', onTap: () => _sendStroke(Usage.tab, Mod.none)),
-            _KeyButton(
-                label: '⌫',
-                onTap: () => _sendStroke(Usage.backspace, Mod.none)),
-            _KeyButton(
-                label: '⏎', onTap: () => _sendStroke(Usage.enter, Mod.none)),
-          ],
-        ),
+        ]),
         const SizedBox(height: 8),
-        Wrap(
-          spacing: 8,
-          alignment: WrapAlignment.center,
-          children: [
-            _KeyButton(
-                label: '←',
-                onTap: () => _sendStroke(Usage.arrowLeft, Mod.none)),
-            _KeyButton(
-                label: '↑', onTap: () => _sendStroke(Usage.arrowUp, Mod.none)),
-            _KeyButton(
-                label: '↓',
-                onTap: () => _sendStroke(Usage.arrowDown, Mod.none)),
-            _KeyButton(
-                label: '→',
-                onTap: () => _sendStroke(Usage.arrowRight, Mod.none)),
-          ],
-        ),
+        _keyRow([
+          _Key(label: 'esc', onTap: () => _sendStroke(Usage.escape, Mod.none)),
+          _Key(label: 'tab', onTap: () => _sendStroke(Usage.tab, Mod.none)),
+          _Key(label: '⌫', onTap: () => _sendStroke(Usage.backspace, Mod.none)),
+          _Key(label: '⏎', onTap: () => _sendStroke(Usage.enter, Mod.none)),
+        ]),
+        const SizedBox(height: 8),
+        _keyRow([
+          _Key(label: '←', onTap: () => _sendStroke(Usage.arrowLeft, Mod.none)),
+          _Key(label: '↑', onTap: () => _sendStroke(Usage.arrowUp, Mod.none)),
+          _Key(label: '↓', onTap: () => _sendStroke(Usage.arrowDown, Mod.none)),
+          _Key(label: '→', onTap: () => _sendStroke(Usage.arrowRight, Mod.none)),
+        ]),
+        if (widget.sink.capabilities.contains(Capability.mediaKeys)) ...[
+          const SizedBox(height: 8),
+          _keyRow([
+            _Key(icon: Icons.brightness_low, onTap: () => _media(MediaKey.brightnessDown)),
+            _Key(icon: Icons.brightness_high, onTap: () => _media(MediaKey.brightnessUp)),
+            _Key(icon: Icons.skip_previous, onTap: () => _media(MediaKey.prevTrack)),
+            _Key(icon: Icons.play_arrow, onTap: () => _media(MediaKey.playPause)),
+            _Key(icon: Icons.skip_next, onTap: () => _media(MediaKey.nextTrack)),
+            _Key(icon: Icons.volume_off, onTap: () => _media(MediaKey.mute)),
+            _Key(icon: Icons.volume_down, onTap: () => _media(MediaKey.volumeDown)),
+            _Key(icon: Icons.volume_up, onTap: () => _media(MediaKey.volumeUp)),
+          ]),
+        ],
         const SizedBox(height: 12),
       ],
     );
   }
+
+  void _media(MediaKey key) => widget.sink.send(MediaTap(key));
 }
 
-class _ModChip extends StatelessWidget {
-  const _ModChip({required this.label, required this.active, required this.onTap});
+/// The one key style used across modifier, navigation, and media rows.
+/// Modifiers pass [active] to render latched (filled) state.
+class _Key extends StatelessWidget {
+  const _Key({this.label, this.icon, required this.onTap, this.active = false})
+      : assert(label != null || icon != null);
 
-  final String label;
+  final String? label;
+  final IconData? icon;
+  final VoidCallback onTap;
   final bool active;
-  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return FilterChip(
-      label: Text(label, style: const TextStyle(fontSize: 18)),
-      selected: active,
-      onSelected: (_) => onTap(),
-      showCheckmark: false,
-    );
-  }
-}
-
-class _KeyButton extends StatelessWidget {
-  const _KeyButton({required this.label, required this.onTap});
-
-  final String label;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return OutlinedButton(
-      onPressed: onTap,
-      child: Text(label, style: const TextStyle(fontSize: 16)),
+    final scheme = Theme.of(context).colorScheme;
+    return SizedBox(
+      height: 44,
+      child: Material(
+        color: active ? scheme.primaryContainer : scheme.surfaceContainerHigh,
+        borderRadius: BorderRadius.circular(10),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: onTap,
+          child: Center(
+            child: icon != null
+                ? Icon(icon, size: 20)
+                : Text(
+                    label!,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: label!.length > 2 ? 14 : 18,
+                      fontWeight:
+                          active ? FontWeight.w600 : FontWeight.w400,
+                      color: active
+                          ? scheme.onPrimaryContainer
+                          : scheme.onSurface,
+                    ),
+                  ),
+          ),
+        ),
+      ),
     );
   }
 }

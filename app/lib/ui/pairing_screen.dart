@@ -116,19 +116,24 @@ class _PairingScreenState extends State<PairingScreen> {
                         ),
                       for (final device in _devices)
                         Card(
-                          child: ListTile(
-                            leading: const Icon(Icons.computer),
-                            title: Text(device.name),
-                            subtitle: Text(device.id),
-                            trailing: state == SinkState.connected
-                                ? const Icon(Icons.chevron_right)
-                                : null,
-                            // Already serving as HID? Just reopen the
-                            // trackpad. Otherwise establish the HID link.
-                            onTap: state == SinkState.connected
-                                ? widget.model.openControl
-                                : () => widget.model.connect(device),
-                          ),
+                          child: Builder(builder: (context) {
+                            final isCurrent = state == SinkState.connected &&
+                                device.id == widget.model.connectedDeviceId;
+                            return ListTile(
+                              leading: const Icon(Icons.computer),
+                              title: Text(device.name),
+                              subtitle: Text(
+                                  isCurrent ? 'Controlling now' : device.id),
+                              trailing: isCurrent
+                                  ? const Icon(Icons.chevron_right)
+                                  : null,
+                              // Current host → reopen the trackpad; any
+                              // other → switch the HID link to it.
+                              onTap: isCurrent
+                                  ? widget.model.openControl
+                                  : () => widget.model.connect(device),
+                            );
+                          }),
                         ),
                     ],
                   ),
