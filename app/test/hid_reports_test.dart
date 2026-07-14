@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:helm/core/input_event.dart';
 import 'package:helm/hid/hid_reports.dart';
 import 'package:helm/hid/keymap_us.dart';
 
@@ -76,6 +77,28 @@ void main() {
 
     test('release-all is eight zero bytes', () {
       expect(keyboardReleaseAll(), List.filled(8, 0));
+    });
+  });
+
+  group('consumer report', () {
+    test('one bit per media key, in enum order', () {
+      expect(encodeConsumerReport(MediaKey.playPause), [0x01]);
+      expect(encodeConsumerReport(MediaKey.nextTrack), [0x02]);
+      expect(encodeConsumerReport(MediaKey.volumeUp), [0x08]);
+      expect(encodeConsumerReport(MediaKey.mute), [0x20]);
+      expect(encodeConsumerReport(MediaKey.brightnessDown), [0x80]);
+    });
+
+    test('every media key fits the single-byte bitmap', () {
+      for (final key in MediaKey.values) {
+        final report = encodeConsumerReport(key);
+        expect(report.length, 1);
+        expect(report[0], 1 << key.index);
+      }
+    });
+
+    test('release-all is one zero byte', () {
+      expect(consumerReleaseAll(), [0]);
     });
   });
 }

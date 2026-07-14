@@ -4,9 +4,40 @@ library;
 
 enum Button { left, right, middle }
 
-enum GestureKind { swipeUp, swipeDown, swipeLeft, swipeRight }
+enum GestureKind {
+  // Three-finger swipes.
+  swipeUp,
+  swipeDown,
+  swipeLeft,
+  swipeRight,
+  // Two-finger horizontal flick (fast) — browser back/forward. Slow
+  // two-finger motion is scrolling, never a gesture.
+  pageSwipeLeft,
+  pageSwipeRight,
+  // Four-finger spread — show desktop; pinch — restore windows.
+  spread,
+  pinch,
+  // Two-finger pinch — zoom. Discrete Tier-1 approximation (Cmd±); true
+  // continuous pinch-zoom needs the v2 helper.
+  zoomIn,
+  zoomOut,
+}
 
 enum GesturePhaseKind { began, changed, ended, cancelled }
+
+/// Media functions exposed by the Consumer Control report. Declaration
+/// order defines the bit position in the report (bit 0 = playPause) and
+/// must match the descriptor's usage order.
+enum MediaKey {
+  playPause,
+  nextTrack,
+  prevTrack,
+  volumeUp,
+  volumeDown,
+  mute,
+  brightnessUp,
+  brightnessDown,
+}
 
 sealed class InputEvent {
   const InputEvent();
@@ -89,6 +120,23 @@ class KeyInput extends InputEvent {
   @override
   String toString() =>
       'KeyInput(0x${usage.toRadixString(16)}, mods: 0x${modifiers.toRadixString(16)}, down: $down)';
+}
+
+/// A tap of a media function (volume, playback, brightness). Transports
+/// emit the press-and-release pair themselves.
+class MediaTap extends InputEvent {
+  const MediaTap(this.key);
+
+  final MediaKey key;
+
+  @override
+  bool operator ==(Object other) => other is MediaTap && other.key == key;
+
+  @override
+  int get hashCode => Object.hash(MediaTap, key);
+
+  @override
+  String toString() => 'MediaTap($key)';
 }
 
 /// Phased gesture progress. Streams began → changed* → ended/cancelled.

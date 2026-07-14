@@ -34,6 +34,18 @@ void main() {
           const KeyStroke(Mod.lCtrl | Mod.lGui, Usage.arrowLeft));
     });
 
+    test('target-OS guessing from Bluetooth names', () {
+      expect(guessTargetOs("Taira's MacBook Pro"), TargetOs.macos);
+      expect(guessTargetOs('iMac (2)'), TargetOs.macos);
+      expect(guessTargetOs('Mac mini'), TargetOs.macos);
+      expect(guessTargetOs('DESKTOP-A1B2C3'), TargetOs.windows);
+      expect(guessTargetOs('LAPTOP-XY99'), TargetOs.windows);
+      expect(guessTargetOs('taira-ubuntu'), TargetOs.linux);
+      expect(guessTargetOs('fedora-workstation'), TargetOs.linux);
+      expect(guessTargetOs('mysterybox'), isNull);
+      expect(guessTargetOs(''), isNull);
+    });
+
     test('Linux GNOME: bare Super means modifier-only tap (usage 0)', () {
       final activities = shortcutFor(TargetOs.linux, GestureKind.swipeUp);
       expect(activities.modifiers, Mod.lGui);

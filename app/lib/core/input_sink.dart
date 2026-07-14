@@ -5,7 +5,7 @@ library;
 
 import 'input_event.dart';
 
-enum Capability { pointer, keyboard, discreteGesture, phasedGesture }
+enum Capability { pointer, keyboard, discreteGesture, phasedGesture, mediaKeys }
 
 enum SinkState { disconnected, connecting, connected, error }
 

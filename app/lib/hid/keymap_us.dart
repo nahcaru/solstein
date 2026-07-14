@@ -31,6 +31,11 @@ abstract final class Usage {
   static const int arrowLeft = 0x50;
   static const int arrowDown = 0x51;
   static const int arrowUp = 0x52;
+  static const int f11 = 0x44;
+  static const int bracketLeft = 0x2F; // [
+  static const int bracketRight = 0x30; // ]
+  static const int minus = 0x2D; // - / _  (zoom out)
+  static const int equal = 0x2E; // = / +  (zoom in)
 }
 
 /// A resolved keystroke: modifier bitmask + usage code.

@@ -6,9 +6,12 @@ library;
 
 import 'dart:typed_data';
 
+import '../core/input_event.dart' show MediaKey;
+
 /// Report IDs as declared in the descriptor.
 const int mouseReportId = 1;
 const int keyboardReportId = 2;
+const int consumerReportId = 3;
 
 /// Mouse button bits (payload byte 0).
 const int buttonLeftBit = 0x01;
@@ -98,6 +101,15 @@ Uint8List encodeKeyboardReport({int modifiers = 0, List<int> keys = const []}) {
 /// All-zero keyboard report: releases all keys and modifiers. Every key
 /// sequence MUST end with this (stuck-key prevention).
 Uint8List keyboardReleaseAll() => Uint8List(8);
+
+/// Encodes one Consumer Control report payload (ID 3): a single byte
+/// where bit N = MediaKey with index N, matching the descriptor's
+/// usage order.
+Uint8List encodeConsumerReport(MediaKey key) =>
+    Uint8List.fromList([1 << key.index]);
+
+/// All-zero consumer report: releases any held media key.
+Uint8List consumerReleaseAll() => Uint8List(1);
 
 /// Press-then-release pair for a keyboard shortcut, e.g. Mission Control
 /// (LCtrl+↑): `[0x01,0,0x52,0,0,0,0,0]` then all-zero.

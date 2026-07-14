@@ -41,9 +41,26 @@ class HidTransport implements InputSink {
   bool _flushScheduled = false;
   int _buttons = 0;
 
+  // Host-mode estimate so repeated gestures don't undo themselves — the
+  // collapsed shortcuts (Ctrl+↑, F11, Win+Tab…) all toggle on the host.
+  // Vertical level walks the macOS stack: −1 App Exposé / desktop shown,
+  // 0 normal, +1 Mission Control / Task View. Clicking or typing interacts
+  // with the host UI and closes these overlays, so it resets the estimate.
+  int _verticalLevel = 0;
+  bool _desktopShown = false;
+
+  void _resetHostModes() {
+    _verticalLevel = 0;
+    _desktopShown = false;
+  }
+
   @override
-  Set<Capability> get capabilities =>
-      const {Capability.pointer, Capability.keyboard, Capability.discreteGesture};
+  Set<Capability> get capabilities => const {
+        Capability.pointer,
+        Capability.keyboard,
+        Capability.discreteGesture,
+        Capability.mediaKeys,
+      };
 
   @override
   Stream<SinkState> get state => _state.stream;
@@ -64,6 +81,10 @@ class HidTransport implements InputSink {
   /// (e.g. OEM builds that disable the HID Device profile).
   Future<String?> lastError() => _channel.invokeMethod<String>('getLastError');
 
+  /// Address of the host currently receiving input, or null.
+  Future<String?> connectedDeviceId() =>
+      _channel.invokeMethod<String>('getConnectedDevice');
+
   /// Bonded Bluetooth devices eligible as hosts.
   Future<List<DeviceTarget>> bondedDevices() async {
     final raw = await _channel.invokeListMethod<Map<Object?, Object?>>(
@@ -79,8 +100,10 @@ class HidTransport implements InputSink {
   }
 
   @override
-  Future<void> connect(DeviceTarget target) =>
-      _channel.invokeMethod<void>('connect', {'address': target.id});
+  Future<void> connect(DeviceTarget target) {
+    _resetHostModes(); // new session, unknown host state
+    return _channel.invokeMethod<void>('connect', {'address': target.id});
+  }
 
   @override
   Future<void> disconnect() async {
@@ -95,6 +118,7 @@ class HidTransport implements InputSink {
     _buttons = 0;
     await _sendMouse(mouseReleaseAll());
     await _sendKeyboard(keyboardReleaseAll());
+    await _sendConsumer(consumerReleaseAll());
   }
 
   @override
@@ -109,6 +133,7 @@ class HidTransport implements InputSink {
         _pendingPan += dx;
         _scheduleFlush();
       case ButtonEvent(:final button, :final down):
+        if (down) _resetHostModes();
         _flushMotion(); // preserve ordering: motion before the click edge
         final bit = switch (button) {
           Button.left => buttonLeftBit,
@@ -118,10 +143,14 @@ class HidTransport implements InputSink {
         _buttons = down ? (_buttons | bit) : (_buttons & ~bit);
         _sendMouse(encodeMouseReport(buttons: _buttons));
       case KeyInput(:final usage, :final modifiers, :final down):
+        if (down) _resetHostModes();
         _sendKeyboard(down
             ? encodeKeyboardReport(
                 modifiers: modifiers, keys: usage == 0 ? const [] : [usage])
             : keyboardReleaseAll());
+      case MediaTap(:final key):
+        _sendConsumer(encodeConsumerReport(key));
+        _sendConsumer(consumerReleaseAll());
       case GesturePhase(:final kind, :final phase, :final progress):
         // Tier 1: discrete collapse. Fire only on a committed swipe.
         if (phase == GesturePhaseKind.ended && progress >= 0.5) {
@@ -129,15 +158,46 @@ class HidTransport implements InputSink {
               ? switch (kind) {
                   GestureKind.swipeLeft => GestureKind.swipeRight,
                   GestureKind.swipeRight => GestureKind.swipeLeft,
+                  GestureKind.pageSwipeLeft => GestureKind.pageSwipeRight,
+                  GestureKind.pageSwipeRight => GestureKind.pageSwipeLeft,
                   _ => kind,
                 }
               : kind;
+          if (!_commitHostMode(effectiveKind)) return;
           final stroke = shortcutFor(targetOs, effectiveKind);
           for (final report in encodeShortcut(
               modifiers: stroke.modifiers, usage: stroke.usage)) {
             _sendKeyboard(report);
           }
         }
+    }
+  }
+
+  /// Updates the host-mode estimate for a committed gesture. Returns false
+  /// when the gesture would only undo its own previous action (repeat at
+  /// the top/bottom of the vertical stack, spread while desktop shown).
+  bool _commitHostMode(GestureKind kind) {
+    switch (kind) {
+      case GestureKind.swipeUp:
+        if (_verticalLevel >= 1) return false;
+        _verticalLevel++;
+        return true;
+      case GestureKind.swipeDown:
+        if (_verticalLevel <= -1) return false;
+        _verticalLevel--;
+        return true;
+      case GestureKind.spread:
+        if (_desktopShown) return false;
+        _desktopShown = true;
+        return true;
+      case GestureKind.pinch:
+        // Restore only undoes a spread we performed; otherwise the toggle
+        // key would *show* the desktop instead.
+        if (!_desktopShown) return false;
+        _desktopShown = false;
+        return true;
+      default:
+        return true; // spaces/page navigation repeat freely
     }
   }
 
@@ -175,6 +235,10 @@ class HidTransport implements InputSink {
 
   Future<void> _sendKeyboard(Uint8List payload) => _channel
       .invokeMethod<void>('sendKeyboardReport', payload)
+      .catchError((_) {});
+
+  Future<void> _sendConsumer(Uint8List payload) => _channel
+      .invokeMethod<void>('sendConsumerReport', payload)
       .catchError((_) {});
 
   Future<void> dispose() async {
