@@ -43,6 +43,7 @@ object HidManager {
     private val executor = Executors.newSingleThreadExecutor()
 
     val isConnected: Boolean get() = connectedDevice != null
+    val connectedAddress: String? get() = connectedDevice?.address
 
     private fun post(state: State) {
         mainHandler.post { listener?.onStateChanged(state) }
@@ -123,7 +124,16 @@ object HidManager {
                 BluetoothProfile.STATE_CONNECTING -> post(State.CONNECTING)
                 BluetoothProfile.STATE_DISCONNECTED, BluetoothProfile.STATE_DISCONNECTING -> {
                     if (connectedDevice?.address == device.address) connectedDevice = null
-                    if (state == BluetoothProfile.STATE_DISCONNECTED) post(State.DISCONNECTED)
+                    if (state == BluetoothProfile.STATE_DISCONNECTED) {
+                        // A queued host switch continues once the old link is gone.
+                        val pending = pendingConnectAddress
+                        if (pending != null) {
+                            pendingConnectAddress = null
+                            connect(pending)
+                        } else {
+                            post(State.DISCONNECTED)
+                        }
+                    }
                 }
             }
         }
@@ -160,6 +170,17 @@ object HidManager {
             pendingConnectAddress = address
             return
         }
+        val current = connectedDevice
+        if (current != null) {
+            if (current.address == address) return
+            // Host switch: neutralize and drop the old link first; the new
+            // connect fires from onConnectionStateChanged(DISCONNECTED).
+            pendingConnectAddress = address
+            post(State.CONNECTING)
+            releaseAll()
+            hid.disconnect(current)
+            return
+        }
         val device = adapter?.getRemoteDevice(address)
             ?: return fail("Unknown Bluetooth device: $address")
         post(State.CONNECTING)
@@ -176,6 +197,7 @@ object HidManager {
     fun releaseAll() {
         sendMouseReport(HelmHidDescriptor.MOUSE_RELEASE_ALL)
         sendKeyboardReport(HelmHidDescriptor.KEYBOARD_RELEASE_ALL)
+        sendConsumerReport(HelmHidDescriptor.CONSUMER_RELEASE_ALL)
     }
 
     fun sendMouseReport(payload: ByteArray): Boolean =
@@ -183,6 +205,9 @@ object HidManager {
 
     fun sendKeyboardReport(payload: ByteArray): Boolean =
         sendReport(HelmHidDescriptor.REPORT_ID_KEYBOARD, payload)
+
+    fun sendConsumerReport(payload: ByteArray): Boolean =
+        sendReport(HelmHidDescriptor.REPORT_ID_CONSUMER, payload)
 
     private fun sendReport(reportId: Int, payload: ByteArray): Boolean {
         val hid = hidDevice ?: return false

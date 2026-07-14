@@ -11,6 +11,7 @@ package dev.taira.helm
 object HelmHidDescriptor {
     const val REPORT_ID_MOUSE = 1
     const val REPORT_ID_KEYBOARD = 2
+    const val REPORT_ID_CONSUMER = 3
 
     val BYTES: ByteArray = intArrayOf(
         // ---------- Report ID 1: Mouse ----------
@@ -56,9 +57,30 @@ object HelmHidDescriptor {
         0x19, 0x00, 0x29, 0x65,
         0x81, 0x00,        //   Input (Data,Array) — 6-key rollover
         0xC0,
+
+        // ---------- Report ID 3: Consumer Control (media keys) ----------
+        // Bit order matches Dart's MediaKey enum: playPause, next, prev,
+        // volUp, volDown, mute, brightnessUp, brightnessDown.
+        0x05, 0x0C,        // Usage Page (Consumer)
+        0x09, 0x01,        // Usage (Consumer Control)
+        0xA1, 0x01,        // Collection (Application)
+        0x85, 0x03,        //   Report ID (3)
+        0x15, 0x00, 0x25, 0x01,
+        0x75, 0x01, 0x95, 0x08,
+        0x0A, 0xCD, 0x00,  //   Play/Pause
+        0x0A, 0xB5, 0x00,  //   Scan Next Track
+        0x0A, 0xB6, 0x00,  //   Scan Previous Track
+        0x0A, 0xE9, 0x00,  //   Volume Up
+        0x0A, 0xEA, 0x00,  //   Volume Down
+        0x0A, 0xE2, 0x00,  //   Mute
+        0x0A, 0x6F, 0x00,  //   Display Brightness Increment
+        0x0A, 0x70, 0x00,  //   Display Brightness Decrement
+        0x81, 0x02,        //   Input (Data,Var,Abs) — 8 media bits
+        0xC0,
     ).map { it.toByte() }.toByteArray()
 
     /** All-zero payloads for stuck-input prevention (exclude report ID). */
     val MOUSE_RELEASE_ALL = ByteArray(5)
     val KEYBOARD_RELEASE_ALL = ByteArray(8)
+    val CONSUMER_RELEASE_ALL = ByteArray(1)
 }

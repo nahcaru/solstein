@@ -47,6 +47,11 @@ class MainActivity : FlutterActivity(), HidManager.Listener {
                         HidManager.sendKeyboardReport(call.arguments as ByteArray)
                         result.success(null)
                     }
+                    "sendConsumerReport" -> {
+                        HidManager.sendConsumerReport(call.arguments as ByteArray)
+                        result.success(null)
+                    }
+                    "getConnectedDevice" -> result.success(HidManager.connectedAddress)
                     "getLastError" -> result.success(HidManager.lastError)
                     else -> result.notImplemented()
                 }
