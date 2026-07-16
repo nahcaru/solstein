@@ -72,4 +72,9 @@ Shared Dart core (BLE central, protocol decode, tray UI, per-OS gesture config) 
 ## Testing
 
 - Unit (CI): gesture engine on synthetic pointer streams; HID report byte encoding; protocol round-trips.
-- Manual integration checklist (per host OS): pair → pointer → tap/right-tap → 2-finger scroll → typing with modifiers → 3-finger swipes → screen-off survival → reconnect after host sleep.
+- Manual integration checklist (per host OS) — unit tests cannot cover timing under a real thumb, nor whether a collapsed shortcut does what the host actually does:
+  - **Pair/link**: pair → pointer moves → screen-off survival → reconnect after host sleep → switch to a second bonded host and back.
+  - **Pointer**: tap-click → 2-finger tap (right click) → 3-finger tap (middle click) → long-press drag → tap-and-drag (tap, re-touch, move) inside the 300 ms window.
+  - **Scroll/flick**: 2-finger scroll v+h → sign matches the host's natural-scroll setting → fast h-flick pages back/forward without a stray scroll.
+  - **Gestures**: 3-finger ↑/↓/←/→ → 4-finger spread/pinch → 2-finger pinch-zoom → repeat each 3×, confirming the host-mode estimate never undoes itself; then click and confirm it resets.
+  - **Keyboard**: typing with modifiers → per-OS modifier lineup → media row (volume/playback).

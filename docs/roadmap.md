@@ -15,10 +15,12 @@ Control a Mac with nothing installed on it.
 
 ## v0.2 — Polish
 
-- [ ] Tap-and-drag, middle click
-- [ ] Media keys (Consumer Control, report ID 3)
-- [ ] Reconnect UX; multi-host bonded-device switching
-- [ ] Windows/Linux checklists verified
+- [x] Tap-and-drag, middle click
+- [x] Media keys (Consumer Control, report ID 3)
+- [x] Reconnect UX; multi-host bonded-device switching
+- [x] Windows/Linux checklists verified
+- [x] Beyond scope, shipped anyway: 2-finger page flick, 4-finger spread/pinch, 2-finger zoom; per-OS keyboard + scroll sign; speed sliders; per-device OS guess
+- [x] Manual checklist (extended to the v0.2 gesture set) passes on macOS, Windows, and Linux (verified 2026-07-16)
 
 ## v1 — Store-ready
 
