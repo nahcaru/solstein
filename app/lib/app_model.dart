@@ -25,8 +25,10 @@ class AppModel extends ChangeNotifier {
         _transport.connectedDeviceId().then((id) async {
           connectedDeviceId = id;
           notifyListeners();
-          if (id != null) await _applyTargetOsForDevice(id);
-          if (id != null) await _applyHostLayoutForDevice(id);
+          if (id != null) {
+            await _applyTargetOsForDevice(id);
+            await _applyHostLayoutForDevice(id);
+          }
         });
       } else {
         connectedDeviceId = null;

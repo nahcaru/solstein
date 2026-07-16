@@ -138,5 +138,31 @@ void main() {
         expect(hostLayouts[id], isNotNull, reason: 'no layout for $id');
       }
     });
+
+    test('strokeFor is injective for every registered layout', () {
+      // A layout that moves letters (QWERTZ, AZERTY) must override them, not
+      // just symbols. If a future table forgets one, the fallback silently
+      // returns the QWERTY key for it — so that letter and whatever
+      // character legitimately owns the displaced key resolve to the same
+      // KeyStroke. Sweeping printable ASCII plus ¥ (JIS) and asserting no
+      // two distinct characters collide catches that even though both
+      // resolve non-null.
+      final sweep = [
+        for (var c = 0x20; c <= 0x7E; c++) String.fromCharCode(c),
+        '¥',
+      ];
+      for (final layout in hostLayouts.values) {
+        final seen = <KeyStroke, String>{};
+        for (final char in sweep) {
+          final stroke = layout.strokeFor(char);
+          if (stroke == null) continue;
+          final prior = seen[stroke];
+          expect(prior, isNull,
+              reason: '${layout.label}: "$prior" and "$char" both resolve '
+                  'to $stroke');
+          seen[stroke] = char;
+        }
+      }
+    });
   });
 }

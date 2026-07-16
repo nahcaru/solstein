@@ -124,4 +124,68 @@ void main() {
 
     expect(sink.downUsages, [0x2F]);
   });
+
+  testWidgets(
+      'a character typed with a held modifier reaches the host as a '
+      'shortcut and resets the buffer', (tester) async {
+    final sink = FakeSink();
+    await pumpKeyboard(tester, sink, us);
+
+    // Tap ⌘, then type "a": the pre-fix code OR'd ⌘ into the keystroke
+    // (sending ⌘A — select all, not the character) but still recorded "a"
+    // in the field, so the next backspace count would have been wrong.
+    await tester.tap(find.text('⌘'));
+    await tester.pump();
+    await tester.enterText(find.byType(TextField), 'a');
+    await tester.pump();
+
+    final down = sink.events
+        .whereType<KeyInput>()
+        .firstWhere((e) => e.down && e.usage == 0x04);
+    expect(down.modifiers, Mod.lGui, reason: 'host received ⌘A, not "a"');
+
+    // The field must not claim the host has "a" it never received as such —
+    // it resets to empty, the one state that's always true.
+    final field = tester.widget<TextField>(find.byType(TextField));
+    expect(field.controller!.text, isEmpty);
+  });
+
+  testWidgets('tapping a modifier alone does not reset the buffer',
+      (tester) async {
+    final sink = FakeSink();
+    await pumpKeyboard(tester, sink, us);
+
+    await tester.enterText(find.byType(TextField), 'hi');
+    await tester.pump();
+
+    await tester.tap(find.text('⌘'));
+    await tester.pump();
+
+    // Toggling a modifier sends nothing and must not disturb the field.
+    expect(find.text('hi'), findsOneWidget);
+  });
+
+  testWidgets(
+      'the nav-row backspace resets the buffer instead of letting it '
+      'desync from the host', (tester) async {
+    final sink = FakeSink();
+    await pumpKeyboard(tester, sink, us);
+
+    await tester.enterText(find.byType(TextField), 'abc');
+    await tester.pump();
+    sink.events.clear();
+
+    // The on-screen ⌫ sends a raw backspace straight to the host without
+    // going through the diff loop at all.
+    await tester.tap(find.text('⌫'));
+    await tester.pump();
+
+    expect(sink.downUsages, [Usage.backspace]);
+
+    // Pre-fix, the field still read "abc" here even though the host now
+    // has "ab" — the next diff would have computed its backspace count
+    // against fiction. The fix resets to empty instead.
+    final field = tester.widget<TextField>(find.byType(TextField));
+    expect(field.controller!.text, isEmpty);
+  });
 }
