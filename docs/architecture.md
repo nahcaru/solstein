@@ -78,3 +78,8 @@ Shared Dart core (BLE central, protocol decode, tray UI, per-OS gesture config) 
   - **Scroll/flick**: 2-finger scroll v+h → sign matches the host's natural-scroll setting → fast h-flick pages back/forward without a stray scroll.
   - **Gestures**: 3-finger ↑/↓/←/→ → 4-finger spread/pinch → 2-finger pinch-zoom → repeat each 3×, confirming the host-mode estimate never undoes itself; then click and confirm it resets.
   - **Keyboard**: typing with modifiers → per-OS modifier lineup → media row (volume/playback).
+  - **Layout/IME**: set the host layout in Settings → JIS host types `@ : ^ ¥ ろ`
+    correctly, US host unaffected → 英数/かな toggle the host IME from the phone →
+    romaji becomes 日本語 without touching the host (spot-check Korean, Pinyin) →
+    a character the layout can't produce (ñ on US) is refused visibly, and the
+    next backspace deletes the right character.

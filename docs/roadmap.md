@@ -24,12 +24,14 @@ Control a Mac with nothing installed on it.
 
 ## v1 — Store-ready
 
-- [ ] Non-US keyboards / CJK (clipboard-paste route candidate)
+- [ ] Non-US host layouts (US, JIS; others by request) + かな/英数 IME keys
+      — CJK itself already works via the host's IME (see ADR-006)
 - [ ] Onboarding, haptics, theming; Play Store release
 
 ## v2 — Helper (Tier 2)
 
-- [ ] `BleTransport` + Wire Protocol v1 (`docs/protocol.md`)
+- [ ] `BleTransport` + Wire Protocol v1 (`docs/protocol.md`), incl. `Text`
+      packets → native Unicode injection (replaces the clipboard-paste idea)
 - [ ] Flutter desktop helper in `helper/`: macOS (CGEvent + Accessibility onboarding) → Windows (SendInput) → Linux (uinput + udev rule)
 - [ ] Helper-side gesture→action config per OS/DE
 

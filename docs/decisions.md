@@ -117,3 +117,49 @@ Ship Tier 2 (helper + public-API shortcuts) first; pursue Tier 3 afterward, vers
 ### Consequences
 
 Predictable v2 milestone; Tier 3 fragility is contained behind a compatibility gate. macOS-only — Windows/Linux stay at Tier 2.
+
+---
+
+## ADR-006: CJK rides the host's IME; arbitrary text waits for the helper
+
+**Status**: Accepted
+**Date**: 2026-07-16
+
+### Context
+
+HID transmits key positions, not characters — there is no usage code for 日. Yet
+device testing (2026-07-16, Pixel 7a → macOS) showed CJK already working in v0.1:
+pressing かな on the host and typing romaji through Helm produces 日本語, because
+the *host's* IME does the conversion. Korean and Pinyin behave identically.
+
+### Decision
+
+CJK input is the host IME's job. Helm sends romaji as ordinary usage codes, keeps
+its own field free of phone-side IME composition
+(`TextInputType.visiblePassword`), and offers かな/英数 (LANG1/LANG2 on macOS) so
+the phone can toggle the host IME. Characters no host layout can produce are
+refused visibly and wait for the v2 helper's `Text` packet.
+
+### Alternatives Considered
+
+- **Clipboard-paste** (the original roadmap candidate): impossible. Nothing in HID
+  lets a peripheral write the host's clipboard, and no host software is listening.
+  It needs the thing v1 is defined as lacking. It is also worse than the
+  alternative it was standing in for — pasting clobbers the user's clipboard.
+- **Unicode Hex Input** (Option+hex / `Ctrl+Shift+U` / Alt+numpad): the only Tier-1
+  route to arbitrary Unicode, but it requires the user to reconfigure their host —
+  eroding the zero-install premise — is three fragile per-OS implementations, and
+  on macOS is an input source *mutually exclusive with the IME* that makes CJK work
+  at all. It would buy ñ-on-a-US-host, which a Spanish layout table sends natively.
+- **Phone-side IME composition**: the phone can compose 日本語 but cannot transmit
+  it; there is no usage code to carry the result.
+
+### Consequences
+
+CJK works at Tier 1 with zero host software, for Japanese, Korean, and Chinese
+alike — at the cost of requiring the host to have its own IME configured, and of
+telling users to keep their phone keyboard in English (the counterintuitive part).
+Anything the host layout cannot express is deferred to v2. Prior art agrees:
+Chromium's remoting protocol pairs a `usb_keycode` `KeyEvent` with a UTF-8
+`TextEvent` for "input method different from physical keyboards, including
+software keyboard" — the split Helm now mirrors across v1/v2.
