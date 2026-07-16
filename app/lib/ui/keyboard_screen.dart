@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../core/input_event.dart';
 import '../core/input_sink.dart';
+import '../hid/ime_keys.dart';
 import '../hid/keymap.dart';
 import '../hid/shortcut_tables.dart';
 
@@ -15,11 +16,13 @@ class KeyboardScreen extends StatefulWidget {
     required this.sink,
     required this.targetOs,
     required this.hostLayout,
+    required this.showImeKeys,
   });
 
   final InputSink sink;
   final TargetOs targetOs;
   final HostLayout hostLayout;
+  final bool showImeKeys;
 
   @override
   State<KeyboardScreen> createState() => _KeyboardScreenState();
@@ -190,6 +193,25 @@ class _KeyboardScreenState extends State<KeyboardScreen> {
           _Key(label: '↓', onTap: () => _sendStroke(Usage.arrowDown, Mod.none)),
           _Key(label: '→', onTap: () => _sendStroke(Usage.arrowRight, Mod.none)),
         ]),
+        if (widget.showImeKeys) ...[
+          const SizedBox(height: 8),
+          Builder(builder: (context) {
+            final keys = imeKeysFor(widget.targetOs);
+            if (keys == null) return const SizedBox.shrink();
+            return _keyRow([
+              _Key(
+                label: '英数',
+                onTap: () => _sendStroke(
+                    keys[ImeKey.eisu]!.usage, keys[ImeKey.eisu]!.modifiers),
+              ),
+              _Key(
+                label: 'かな',
+                onTap: () => _sendStroke(
+                    keys[ImeKey.kana]!.usage, keys[ImeKey.kana]!.modifiers),
+              ),
+            ]);
+          }),
+        ],
         if (widget.sink.capabilities.contains(Capability.mediaKeys)) ...[
           const SizedBox(height: 8),
           _keyRow([

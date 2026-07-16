@@ -53,4 +53,15 @@ void main() {
     await model.load();
     expect(model.hostLayout.id, HostLayoutId.us);
   });
+
+  test('IME keys default to off and persist when enabled', () async {
+    final model = AppModel();
+    await model.load();
+    expect(model.showImeKeys, isFalse);
+
+    await model.setShowImeKeys(true);
+    final restored = AppModel();
+    await restored.load();
+    expect(restored.showImeKeys, isTrue);
+  });
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../app_model.dart';
+import '../hid/ime_keys.dart';
 import '../hid/keymap.dart';
 import '../hid/layouts.dart';
 import '../hid/shortcut_tables.dart';
@@ -88,6 +89,15 @@ class SettingsScreen extends StatelessWidget {
               value: model.naturalScroll,
               onChanged: model.setNaturalScroll,
             ),
+            if (imeKeysFor(model.targetOs) != null)
+              SwitchListTile(
+                title: const Text('Show IME keys (かな / 英数)'),
+                subtitle: const Text(
+                    'Toggle the computer\'s own IME. Type romaji and the '
+                    'computer converts it — keep your phone keyboard in English'),
+                value: model.showImeKeys,
+                onChanged: model.setShowImeKeys,
+              ),
           ],
         ),
       ),

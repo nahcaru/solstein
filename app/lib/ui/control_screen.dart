@@ -74,6 +74,7 @@ class _ControlScreenState extends State<ControlScreen> {
                 sink: model.sink,
                 targetOs: model.targetOs,
                 hostLayout: model.hostLayout,
+                showImeKeys: model.showImeKeys,
               ),
           ],
         ),

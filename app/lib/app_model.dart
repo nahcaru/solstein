@@ -102,6 +102,11 @@ class AppModel extends ChangeNotifier {
   double scrollGain = 1.0;
   bool naturalScroll = true;
 
+  /// Whether to show the かな / 英数 keys. Off by default — they mean nothing
+  /// to users who don't run a host IME. Deliberately not tied to the host
+  /// layout: running the Japanese IME on a US-layout Mac is common.
+  bool showImeKeys = false;
+
   /// The host's physical keyboard layout. Independent of [targetOs] — a Mac
   /// can be JIS, a Linux box AZERTY.
   HostLayoutId _hostLayoutId = HostLayoutId.us;
@@ -122,6 +127,7 @@ class AppModel extends ChangeNotifier {
   static const _kScrollGain = 'scrollGain';
   static const _kNaturalScroll = 'naturalScroll';
   static const _kHostLayout = 'hostLayout';
+  static const _kShowImeKeys = 'showImeKeys';
 
   static HostLayoutId _layoutFromIndex(int? index) =>
       (index != null && index >= 0 && index < HostLayoutId.values.length)
@@ -139,6 +145,7 @@ class AppModel extends ChangeNotifier {
     naturalScroll = prefs.getBool(_kNaturalScroll) ?? true;
     _transport.naturalScroll = naturalScroll;
     _hostLayoutId = _layoutFromIndex(prefs.getInt(_kHostLayout));
+    showImeKeys = prefs.getBool(_kShowImeKeys) ?? false;
     notifyListeners();
   }
 
@@ -183,6 +190,13 @@ class AppModel extends ChangeNotifier {
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_kNaturalScroll, value);
+  }
+
+  Future<void> setShowImeKeys(bool value) async {
+    showImeKeys = value;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kShowImeKeys, value);
   }
 
   Future<bool> ensurePermissions() => _transport.ensurePermissions();

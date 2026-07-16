@@ -31,13 +31,19 @@ class FakeSink implements InputSink {
   Stream<SinkState> get state => const Stream.empty();
 }
 
-Future<void> pumpKeyboard(WidgetTester tester, FakeSink sink, HostLayout layout) {
+Future<void> pumpKeyboard(
+  WidgetTester tester,
+  FakeSink sink,
+  HostLayout layout, {
+  bool showImeKeys = false,
+}) {
   return tester.pumpWidget(MaterialApp(
     home: Scaffold(
       body: KeyboardScreen(
         sink: sink,
         targetOs: TargetOs.macos,
         hostLayout: layout,
+        showImeKeys: showImeKeys,
       ),
     ),
   ));
