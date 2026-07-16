@@ -78,6 +78,12 @@ class _KeyboardScreenState extends State<KeyboardScreen> {
 
   /// Diffs the text field against its previous value: removals become
   /// backspaces, additions become keystrokes.
+  ///
+  /// Invariant: the field only ever holds what the host actually received.
+  /// A character the host layout cannot produce is refused rather than
+  /// silently dropped — otherwise the buffer this diff reads would describe
+  /// text the host never got, and the next backspace would delete the wrong
+  /// character on the host.
   void _onTextChanged(String text) {
     var common = 0;
     while (common < _lastText.length &&
@@ -88,16 +94,43 @@ class _KeyboardScreenState extends State<KeyboardScreen> {
     for (var i = 0; i < _lastText.length - common; i++) {
       _sendStroke(Usage.backspace, Mod.none);
     }
+
+    final accepted = StringBuffer(text.substring(0, common));
+    final refused = <String>[];
     for (final char in text.substring(common).characters) {
       final stroke = widget.hostLayout.strokeFor(char);
-      if (stroke != null) _sendStroke(stroke.usage, stroke.modifiers);
+      if (stroke == null) {
+        refused.add(char);
+        continue;
+      }
+      _sendStroke(stroke.usage, stroke.modifiers);
+      accepted.write(char);
     }
-    _lastText = text;
+
+    var settled = accepted.toString();
     // Keep the buffer from growing without bound.
-    if (text.length > 200) {
-      _controller.clear();
-      _lastText = '';
+    if (settled.length > 200) settled = '';
+
+    _lastText = settled;
+    if (settled != text) {
+      // Programmatic edits do not re-enter onChanged.
+      _controller.value = TextEditingValue(
+        text: settled,
+        selection: TextSelection.collapsed(offset: settled.length),
+      );
     }
+
+    if (refused.isNotEmpty) _reportRefused(refused);
+  }
+
+  void _reportRefused(List<String> chars) {
+    final unique = chars.toSet().join(' ');
+    final layout = widget.hostLayout.label;
+    ScaffoldMessenger.of(context)
+      ..removeCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        content: Text('$unique isn\'t on the $layout keyboard layout'),
+      ));
   }
 
   Widget _keyRow(List<Widget> keys) => Padding(
