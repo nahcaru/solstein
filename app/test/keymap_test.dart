@@ -62,6 +62,66 @@ void main() {
     });
   });
 
+  group('JIS layout', () {
+    final jis = hostLayouts[HostLayoutId.jis]!;
+
+    test('letters and digits match QWERTY', () {
+      expect(jis.strokeFor('a'), const KeyStroke(Mod.none, 0x04));
+      expect(jis.strokeFor('Z'), const KeyStroke(Mod.lShift, 0x1D));
+      expect(jis.strokeFor('0'), const KeyStroke(Mod.none, 0x27));
+    });
+
+    test('digit-row symbols shift left from & onward', () {
+      expect(jis.strokeFor('&'), const KeyStroke(Mod.lShift, 0x23)); // 6, not 7
+      expect(jis.strokeFor("'"), const KeyStroke(Mod.lShift, 0x24)); // 7
+      expect(jis.strokeFor('('), const KeyStroke(Mod.lShift, 0x25)); // 8
+      expect(jis.strokeFor(')'), const KeyStroke(Mod.lShift, 0x26)); // 9
+      expect(jis.strokeFor('"'), const KeyStroke(Mod.lShift, 0x1F)); // 2
+    });
+
+    test('@ sits at the US [ position', () {
+      expect(jis.strokeFor('@'), const KeyStroke(Mod.none, 0x2F));
+      expect(jis.strokeFor('`'), const KeyStroke(Mod.lShift, 0x2F));
+    });
+
+    test('brackets move one key right', () {
+      expect(jis.strokeFor('['), const KeyStroke(Mod.none, 0x30));
+      expect(jis.strokeFor(']'), const KeyStroke(Mod.none, 0x31));
+    });
+
+    test('colon and semicolon are separate keys', () {
+      expect(jis.strokeFor(';'), const KeyStroke(Mod.none, 0x33));
+      expect(jis.strokeFor(':'), const KeyStroke(Mod.none, 0x34));
+      expect(jis.strokeFor('*'), const KeyStroke(Mod.lShift, 0x34));
+    });
+
+    test('JIS-only keys: ¥ on International3, backslash on the ろ key', () {
+      expect(jis.strokeFor('¥'), const KeyStroke(Mod.none, Usage.intl3));
+      expect(jis.strokeFor('|'), const KeyStroke(Mod.lShift, Usage.intl3));
+      expect(jis.strokeFor(r'\'), const KeyStroke(Mod.none, Usage.intl1));
+      expect(jis.strokeFor('_'), const KeyStroke(Mod.lShift, Usage.intl1));
+    });
+
+    test('caret and tilde live on the US = key', () {
+      expect(jis.strokeFor('^'), const KeyStroke(Mod.none, 0x2E));
+      expect(jis.strokeFor('~'), const KeyStroke(Mod.lShift, 0x2E));
+      expect(jis.strokeFor('='), const KeyStroke(Mod.lShift, 0x2D));
+    });
+
+    test('every printable ASCII character is mappable', () {
+      for (var c = 0x20; c <= 0x7E; c++) {
+        final char = String.fromCharCode(c);
+        expect(jis.strokeFor(char), isNotNull,
+            reason: 'no mapping for "$char" (0x${c.toRadixString(16)})');
+      }
+    });
+
+    test('CJK is still unmappable — the host IME converts romaji instead', () {
+      expect(jis.strokeFor('日'), isNull);
+      expect(jis.strokeFor('あ'), isNull);
+    });
+  });
+
   group('registry', () {
     test('every registered layout is keyed by its own id', () {
       hostLayouts.forEach((id, layout) => expect(layout.id, id));
@@ -73,8 +133,10 @@ void main() {
       }
     });
 
-    test('US is registered', () {
-      expect(hostLayouts[HostLayoutId.us], isNotNull);
+    test('every HostLayoutId has a layout', () {
+      for (final id in HostLayoutId.values) {
+        expect(hostLayouts[id], isNotNull, reason: 'no layout for $id');
+      }
     });
   });
 }
