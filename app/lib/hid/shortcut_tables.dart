@@ -3,7 +3,7 @@
 library;
 
 import '../core/input_event.dart';
-import 'keymap_us.dart';
+import 'keymap.dart';
 
 enum TargetOs { macos, windows, linux }
 

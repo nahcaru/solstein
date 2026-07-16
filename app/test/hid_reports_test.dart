@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:helm/core/input_event.dart';
 import 'package:helm/hid/hid_reports.dart';
-import 'package:helm/hid/keymap_us.dart';
+import 'package:helm/hid/keymap.dart';
 
 void main() {
   group('mouse report', () {

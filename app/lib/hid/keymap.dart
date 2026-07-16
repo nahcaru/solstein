@@ -1,5 +1,7 @@
-/// US keyboard layout: character → (modifiers, HID usage). v0.1 is US-only;
-/// CJK/IME is a v1 problem (see docs/hid-descriptor.md).
+/// Keyboard vocabulary and the host-layout seam. A layout resolves a
+/// character to the key position that produces it *on the host* — the same
+/// usage code means different characters under different host layouts.
+/// See docs/superpowers/specs/2026-07-16-v1-keyboard-design.md.
 library;
 
 /// HID keyboard modifier bits (report byte 0).
@@ -36,6 +38,10 @@ abstract final class Usage {
   static const int bracketRight = 0x30; // ]
   static const int minus = 0x2D; // - / _  (zoom out)
   static const int equal = 0x2E; // = / +  (zoom in)
+  static const int lang1 = 0x90; // かな / Hangul toggle
+  static const int lang2 = 0x91; // 英数 / Hanja
+  static const int intl1 = 0x87; // ろ / backslash on JIS
+  static const int intl3 = 0x89; // ¥ on JIS
 }
 
 /// A resolved keystroke: modifier bitmask + usage code.
@@ -59,50 +65,50 @@ class KeyStroke {
       'KeyStroke(mods: 0x${modifiers.toRadixString(16)}, usage: 0x${usage.toRadixString(16)})';
 }
 
+enum HostLayoutId { us, jis }
+
 const int _usageA = 0x04;
 const int _usage1 = 0x1E;
 
-/// Shifted-symbol → base-key usage for the US layout.
-const Map<String, int> _shiftedSymbols = {
-  '!': 0x1E, '@': 0x1F, '#': 0x20, r'$': 0x21, '%': 0x22,
-  '^': 0x23, '&': 0x24, '*': 0x25, '(': 0x26, ')': 0x27,
-  '_': 0x2D, '+': 0x2E, '{': 0x2F, '}': 0x30, '|': 0x31,
-  ':': 0x33, '"': 0x34, '~': 0x35, '<': 0x36, '>': 0x37, '?': 0x38,
-};
-
-/// Unshifted symbols and whitespace.
-const Map<String, int> _plainSymbols = {
-  '-': 0x2D, '=': 0x2E, '[': 0x2F, ']': 0x30, r'\': 0x31,
-  ';': 0x33, "'": 0x34, '`': 0x35, ',': 0x36, '.': 0x37, '/': 0x38,
-  ' ': Usage.space, '\n': Usage.enter, '\t': Usage.tab,
-};
-
-/// Resolves a single character to a [KeyStroke] on the US layout.
-/// Returns null for characters the layout cannot produce.
-KeyStroke? keyStrokeForChar(String char) {
-  if (char.length != 1) return null;
+/// Letters and digits at their QWERTY positions. Layouts that move letters
+/// (QWERTZ swaps y/z, AZERTY swaps a/q and z/w) override them instead.
+KeyStroke? _qwertyAlnum(String char) {
   final code = char.codeUnitAt(0);
-
-  // a–z
   if (code >= 0x61 && code <= 0x7A) {
-    return KeyStroke(Mod.none, _usageA + (code - 0x61));
+    return KeyStroke(Mod.none, _usageA + (code - 0x61)); // a–z
   }
-  // A–Z
   if (code >= 0x41 && code <= 0x5A) {
-    return KeyStroke(Mod.lShift, _usageA + (code - 0x41));
+    return KeyStroke(Mod.lShift, _usageA + (code - 0x41)); // A–Z
   }
-  // 1–9
   if (code >= 0x31 && code <= 0x39) {
-    return KeyStroke(Mod.none, _usage1 + (code - 0x31));
+    return KeyStroke(Mod.none, _usage1 + (code - 0x31)); // 1–9
   }
-  // 0
-  if (code == 0x30) return const KeyStroke(Mod.none, 0x27);
-
-  final plain = _plainSymbols[char];
-  if (plain != null) return KeyStroke(Mod.none, plain);
-
-  final shifted = _shiftedSymbols[char];
-  if (shifted != null) return KeyStroke(Mod.lShift, shifted);
-
+  if (code == 0x30) return const KeyStroke(Mod.none, 0x27); // 0
   return null;
+}
+
+/// A host keyboard layout: the shared QWERTY alphanumeric core plus
+/// [overrides], which win. A new layout is a data-only addition.
+class HostLayout {
+  const HostLayout({
+    required this.id,
+    required this.label,
+    required this.overrides,
+  });
+
+  final HostLayoutId id;
+
+  /// Shown in Settings.
+  final String label;
+
+  /// Everything this layout does differently from bare QWERTY: symbols,
+  /// whitespace, and — for non-QWERTY layouts — letters.
+  final Map<String, KeyStroke> overrides;
+
+  /// The keystroke that produces [char] on this host layout, or null if the
+  /// layout cannot produce it.
+  KeyStroke? strokeFor(String char) {
+    if (char.length != 1) return null;
+    return overrides[char] ?? _qwertyAlnum(char);
+  }
 }

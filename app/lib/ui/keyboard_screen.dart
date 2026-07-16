@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../core/input_event.dart';
 import '../core/input_sink.dart';
-import '../hid/keymap_us.dart';
+import '../hid/keymap.dart';
+import '../hid/layouts.dart';
 import '../hid/shortcut_tables.dart';
 
 /// Keyboard input: a text field that forwards keystrokes (US layout) plus
@@ -83,7 +84,7 @@ class _KeyboardScreenState extends State<KeyboardScreen> {
       _sendStroke(Usage.backspace, Mod.none);
     }
     for (final char in text.substring(common).characters) {
-      final stroke = keyStrokeForChar(char);
+      final stroke = usLayout.strokeFor(char);
       if (stroke != null) _sendStroke(stroke.usage, stroke.modifiers);
     }
     _lastText = text;
