@@ -52,8 +52,11 @@ const HostLayout usLayout = HostLayout(
 );
 
 /// JIS reads the same usage codes as US but produces different characters.
-/// Verified against a real JIS host — see the manual checklist in
-/// docs/architecture.md.
+///
+/// Transcribed from the v1 keyboard spec, not yet confirmed against a real
+/// JIS host. Unit tests cannot catch a mapping pointed at the wrong key —
+/// only typing `@ : ^ ¥ ろ` on a JIS host can. See the Layout/IME section of
+/// the manual checklist in docs/architecture.md.
 const Map<String, KeyStroke> _jisOverrides = {
   // Digit row: shifted symbols shift left by one from & onward.
   '!': KeyStroke(Mod.lShift, 0x1E), // 1
