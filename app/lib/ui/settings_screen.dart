@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../app_model.dart';
+import '../hid/keymap.dart';
+import '../hid/layouts.dart';
 import '../hid/shortcut_tables.dart';
 
 class SettingsScreen extends StatelessWidget {
@@ -34,6 +36,25 @@ class SettingsScreen extends StatelessWidget {
                       value: TargetOs.windows, child: Text('Windows')),
                   DropdownMenuItem(
                       value: TargetOs.linux, child: Text('Linux (GNOME)')),
+                ],
+              ),
+            ),
+            const Divider(),
+            ListTile(
+              title: const Text('Computer\'s keyboard layout'),
+              subtitle: const Text(
+                  'Which physical keyboard the computer thinks is attached'),
+              trailing: DropdownButton<HostLayoutId>(
+                value: model.hostLayout.id,
+                onChanged: (id) {
+                  if (id != null) model.setHostLayout(id);
+                },
+                items: [
+                  for (final layout in hostLayouts.values)
+                    DropdownMenuItem(
+                      value: layout.id,
+                      child: Text(layout.label),
+                    ),
                 ],
               ),
             ),

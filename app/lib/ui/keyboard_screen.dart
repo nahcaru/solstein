@@ -3,18 +3,23 @@ import 'package:flutter/material.dart';
 import '../core/input_event.dart';
 import '../core/input_sink.dart';
 import '../hid/keymap.dart';
-import '../hid/layouts.dart';
 import '../hid/shortcut_tables.dart';
 
-/// Keyboard input: a text field that forwards keystrokes (US layout) plus
-/// modifier / navigation / media rows. Modifiers are one-shot (sticky-keys
-/// style): toggle ⌘, tap a key, modifier releases. The modifier lineup and
-/// labels follow the target OS.
+/// Keyboard input: a text field that forwards keystrokes (resolved through
+/// the host's keyboard layout) plus modifier / navigation / media rows.
+/// Modifiers are one-shot (sticky-keys style): toggle ⌘, tap a key, modifier
+/// releases. The modifier lineup and labels follow the target OS.
 class KeyboardScreen extends StatefulWidget {
-  const KeyboardScreen({super.key, required this.sink, required this.targetOs});
+  const KeyboardScreen({
+    super.key,
+    required this.sink,
+    required this.targetOs,
+    required this.hostLayout,
+  });
 
   final InputSink sink;
   final TargetOs targetOs;
+  final HostLayout hostLayout;
 
   @override
   State<KeyboardScreen> createState() => _KeyboardScreenState();
@@ -84,7 +89,7 @@ class _KeyboardScreenState extends State<KeyboardScreen> {
       _sendStroke(Usage.backspace, Mod.none);
     }
     for (final char in text.substring(common).characters) {
-      final stroke = usLayout.strokeFor(char);
+      final stroke = widget.hostLayout.strokeFor(char);
       if (stroke != null) _sendStroke(stroke.usage, stroke.modifiers);
     }
     _lastText = text;

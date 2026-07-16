@@ -70,7 +70,11 @@ class _ControlScreenState extends State<ControlScreen> {
                 ),
               ),
             if (_keyboardVisible && capabilities.contains(Capability.keyboard))
-              KeyboardScreen(sink: model.sink, targetOs: model.targetOs),
+              KeyboardScreen(
+                sink: model.sink,
+                targetOs: model.targetOs,
+                hostLayout: model.hostLayout,
+              ),
           ],
         ),
       ),

@@ -3,6 +3,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'core/input_sink.dart';
 import 'engine/gesture_config.dart';
+import 'hid/keymap.dart';
+import 'hid/layouts.dart';
 import 'hid/shortcut_tables.dart';
 import 'transport/hid_transport.dart';
 
@@ -24,6 +26,7 @@ class AppModel extends ChangeNotifier {
           connectedDeviceId = id;
           notifyListeners();
           if (id != null) await _applyTargetOsForDevice(id);
+          if (id != null) await _applyHostLayoutForDevice(id);
         });
       } else {
         connectedDeviceId = null;
@@ -50,6 +53,19 @@ class AppModel extends ChangeNotifier {
     }
     if (os != null && os != targetOs) {
       _transport.targetOs = os;
+      notifyListeners();
+    }
+  }
+
+  /// Applies this host's remembered layout, if it has one. No guess exists
+  /// for layout the way [guessTargetOs] guesses the OS from a device name.
+  Future<void> _applyHostLayoutForDevice(String id) async {
+    final prefs = await SharedPreferences.getInstance();
+    final stored = prefs.getInt('$_kHostLayout.$id');
+    if (stored == null) return;
+    final layout = _layoutFromIndex(stored);
+    if (layout != _hostLayoutId) {
+      _hostLayoutId = layout;
       notifyListeners();
     }
   }
@@ -86,6 +102,12 @@ class AppModel extends ChangeNotifier {
   double scrollGain = 1.0;
   bool naturalScroll = true;
 
+  /// The host's physical keyboard layout. Independent of [targetOs] — a Mac
+  /// can be JIS, a Linux box AZERTY.
+  HostLayoutId _hostLayoutId = HostLayoutId.us;
+
+  HostLayout get hostLayout => hostLayouts[_hostLayoutId]!;
+
   GestureConfig get gestureConfig => GestureConfig(
         pointerGain: pointerGain,
         scrollGain: scrollGain,
@@ -99,6 +121,12 @@ class AppModel extends ChangeNotifier {
   static const _kPointerGain = 'pointerGain';
   static const _kScrollGain = 'scrollGain';
   static const _kNaturalScroll = 'naturalScroll';
+  static const _kHostLayout = 'hostLayout';
+
+  static HostLayoutId _layoutFromIndex(int? index) =>
+      (index != null && index >= 0 && index < HostLayoutId.values.length)
+          ? HostLayoutId.values[index]
+          : HostLayoutId.us;
 
   Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
@@ -110,6 +138,7 @@ class AppModel extends ChangeNotifier {
     scrollGain = (prefs.getDouble(_kScrollGain) ?? 1.0).clamp(0.1, 2.0);
     naturalScroll = prefs.getBool(_kNaturalScroll) ?? true;
     _transport.naturalScroll = naturalScroll;
+    _hostLayoutId = _layoutFromIndex(prefs.getInt(_kHostLayout));
     notifyListeners();
   }
 
@@ -121,6 +150,17 @@ class AppModel extends ChangeNotifier {
     // Remember the explicit choice for this host; it beats name-guessing.
     final id = connectedDeviceId;
     if (id != null) await prefs.setInt('$_kTargetOs.$id', os.index);
+  }
+
+  Future<void> setHostLayout(HostLayoutId id) async {
+    _hostLayoutId = id;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_kHostLayout, id.index);
+    final deviceId = connectedDeviceId;
+    if (deviceId != null) {
+      await prefs.setInt('$_kHostLayout.$deviceId', id.index);
+    }
   }
 
   Future<void> setPointerGain(double gain) async {
