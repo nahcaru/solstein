@@ -19,6 +19,7 @@ Binary, little-endian, ≤ 20 B (BLE 4.2 floor; negotiate larger MTU when availa
 
 ```
 byte 0: type   1=PointerMove 2=Button 3=Scroll 4=Key 5=GesturePhase
+               8=PointerAbsolute
 byte 1: seq    wrap-around counter (loss detection only; no retransmit)
 payload:
   PointerMove:  int16 dx, int16 dy
@@ -27,13 +28,19 @@ payload:
   Key:          u8 usage, u8 modifiers, u8 down
   GesturePhase: u8 kind, u8 phase(0 began,1 changed,2 ended,3 cancelled),
                 u16 progress (0–65535 ≙ 0.0–1.0), int16 velocity
+  PointerAbsolute: u16 x, u16 y  (0–65535 ≙ 0.0–1.0 of the host's desktop)
 ```
+
+Type 8 is reserved for presenter-mode spotlight; 6 and 7 are held for the v1 keyboard work (`MediaTap`, `Text`).
+
+**Invariant: `PointerAbsolute` stays normalized on the wire.** The HID transport quantizes to its descriptor's 0…32767 grid; a helper injecting natively multiplies by its own screen size. Neither resolution belongs in the packet. A helper that cannot position absolutely must drop the packet, never synthesize a relative delta from it (see ADR-007).
 
 **Invariant: `GesturePhase` stays in the protocol even while helpers only consume it discretely.** Tier 3 (interactive scrubbing) must be deployable as a helper-only upgrade.
 
 ## QoS
 
 - Coalesce pointer/scroll/phase to ≤ ~90 Hz, latest-wins under congestion.
+- Coalesce `PointerAbsolute` latest-wins and **never accumulate**: summing positions is meaningless, and under congestion the newest position is the only correct one.
 - Never drop Button/Key packets.
 - Request 7.5–15 ms connection interval.
 

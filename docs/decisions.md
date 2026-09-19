@@ -117,3 +117,42 @@ Ship Tier 2 (helper + public-API shortcuts) first; pursue Tier 3 afterward, vers
 ### Consequences
 
 Predictable v2 milestone; Tier 3 fragility is contained behind a compatibility gate. macOS-only — Windows/Linux stay at Tier 2.
+
+---
+
+## ADR-007: Presenter mode maps phone orientation to the pointer; absolute HID pointing rejected
+
+**Status**: Accepted (absolute pointing over HID rejected after hardware test)
+**Date**: 2026-09-19
+
+### Context
+
+A presenter needs to point at the screen from across the room. Premium presenters (Logitech Spotlight and kin) do this with a hybrid: relative deltas while gliding, and direct absolute pointing while a spotlight button is held. Helm's event vocabulary had no absolute position, its descriptor had no absolute report, and its only motion source was the touchscreen.
+
+### Decision
+
+1. `MotionEngine`, a second pure-Dart engine beside `GestureEngine`: timestamped `MotionSample`s in, `InputEvent`s out, no platform imports. Rates come from a `MotionSource` seam (`sensors_plus` today), with gyro-bias learning while still, a gravity-derived complementary filter for pitch, and roll compensation about the pointing axis.
+2. Gliding maps angular velocity to relative `PointerMove` on the existing mouse report. Holding Spotlight over HID is slow relative "precision" pointing.
+3. `PointerAbsolute(double x, double y)` (normalized 0.0–1.0) and `Capability.absolutePointer` exist in the vocabulary and the engine, but **`HidTransport` does not declare the capability and drops the event**. A v2 helper injecting positions natively can honour it.
+4. Prev/Next are Page Up / Page Down sent directly as `KeyInput`.
+
+### Result of the hardware test
+
+An absolute pointer was added as a fourth top-level descriptor collection (report ID 4, Generic Desktop / Mouse, 16-bit absolute X/Y, plus three button bits). On a Pixel 7a paired with a host, the phone sent correct reports (`ok=true`, verified in logcat), and pointing worked, **but the host stopped acting on the mouse buttons of report 1**: trackpad taps and the presenter Click did nothing, while keyboard reports (Prev/Next) kept working. Removing report 4 and re-pairing restored the buttons. So a second Mouse application collection breaks button handling on at least that host. The cause inside the host was not investigated.
+
+### Alternatives Considered
+
+- **A Digitizer/Stylus collection for the absolute report**: not tried. Might avoid the clash, but host behaviour for a generic Bluetooth digitizer is unpredictable and each attempt costs a remove-and-re-pair on every host. Revisit only with a way to test all three OSes.
+- **A native Kotlin `SensorManager` channel on `TYPE_GAME_ROTATION_VECTOR`**: better long-horizon yaw stability, but rewritten in Swift for the v3 iOS client. Kept as a drop-in behind `MotionSource`.
+- **`PointerAbsolute` as `int` 0…32767**: leaks one transport's quantization grid into the shared vocabulary.
+- **Slide keys in `shortcut_tables.dart`**: that map is keyed by `GestureKind`; a `GestureKind.nextSlide` would break `GestureEngine`'s exhaustive switches.
+- **Synthesizing absolute over the relative report** (home to a corner, then dead-reckon): hosts apply their own pointer acceleration, so the position is unknowable and guessing causes cursor runaway. Hence: a sink without the capability drops `PointerAbsolute`.
+
+### Consequences
+
+- Presenter mode works over HID with **no descriptor change and no re-pairing**.
+- The spotlight over HID is precision gliding, not direct pointing. True absolute pointing waits for the v2 helper.
+- **Any future descriptor change must be tested for regressions in the existing reports on real hosts**, not only by the golden-bytes test: the descriptor was well formed and its reports correct, and it still broke unrelated buttons.
+- Yaw has no absolute reference indoors (the magnetometer is unreliable), so an absolute spotlight would re-zero yaw on every press; pitch is gravity-anchored and does not drift.
+- `MotionConfig` has value equality, `GestureConfig` does not. A config change resets the engine, and a motion reset discards the gyro-bias estimate, so a freshly built but identical config must not read as "changed". `GestureConfig` has the same latent behaviour today; harmless there, worth fixing separately.
+- Sign conventions and `countsPerRadian` are derived, not measured; tune on a real phone.

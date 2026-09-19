@@ -1,6 +1,7 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:helm/core/input_event.dart';
+import 'package:helm/core/input_sink.dart';
 import 'package:helm/hid/shortcut_tables.dart';
 import 'package:helm/transport/hid_transport.dart';
 
@@ -312,5 +313,31 @@ void main() {
     await pumpEventQueue();
     expect(calls[0].$2, [0x00, 5, 5, 0, 0]);
     expect(calls[1].$2, [0x01, 0, 0, 0, 0]);
+  });
+
+  group('absolute pointing is not supported over HID', () {
+    test('does not declare the absolutePointer capability', () {
+      expect(transport.capabilities, isNot(contains(Capability.absolutePointer)));
+    });
+
+    test('an absolute position is dropped, never faked with relative motion',
+        () async {
+      transport.send(const PointerAbsolute(0.9, 0.9));
+      await pumpEventQueue();
+      expect(calls, isEmpty);
+    });
+
+    test('clicks still reach the mouse report after an absolute event',
+        () async {
+      transport
+        ..send(const PointerAbsolute(0.5, 0.5))
+        ..send(const ButtonEvent(Button.left, down: true))
+        ..send(const ButtonEvent(Button.left, down: false));
+      await pumpEventQueue();
+      expect(calls.map((c) => c.$2), [
+        [0x01, 0, 0, 0, 0],
+        [0x00, 0, 0, 0, 0],
+      ]);
+    });
   });
 }

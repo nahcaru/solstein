@@ -128,6 +128,11 @@ class HidTransport implements InputSink {
         _pendingDx += dx;
         _pendingDy += dy;
         _scheduleFlush();
+      case PointerAbsolute():
+        // Dropped on purpose, never faked with relative deltas. This transport
+        // does not declare Capability.absolutePointer: a separate absolute
+        // report (ID 4) made hosts ignore the mouse buttons (see ADR-007).
+        break;
       case Scroll(:final dx, :final dy):
         _pendingWheel += dy;
         _pendingPan += dx;

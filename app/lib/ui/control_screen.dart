@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../app_model.dart';
 import '../core/input_sink.dart';
 import 'keyboard_screen.dart';
+import 'presenter_surface.dart';
 import 'settings_screen.dart';
 import 'trackpad_surface.dart';
 
@@ -19,6 +20,7 @@ class ControlScreen extends StatefulWidget {
 
 class _ControlScreenState extends State<ControlScreen> {
   bool _keyboardVisible = false;
+  bool _presenterVisible = false;
 
   @override
   Widget build(BuildContext context) {
@@ -35,6 +37,15 @@ class _ControlScreenState extends State<ControlScreen> {
         ),
         title: const Text('Helm'),
         actions: [
+          if (capabilities.contains(Capability.pointer))
+            IconButton(
+              icon: Icon(
+                _presenterVisible ? Icons.touch_app : Icons.ads_click,
+              ),
+              tooltip: _presenterVisible ? 'Trackpad' : 'Presenter',
+              onPressed: () =>
+                  setState(() => _presenterVisible = !_presenterVisible),
+            ),
           if (capabilities.contains(Capability.keyboard))
             IconButton(
               icon: Icon(
@@ -63,10 +74,17 @@ class _ControlScreenState extends State<ControlScreen> {
               Expanded(
                 child: Padding(
                   padding: const EdgeInsets.all(12),
-                  child: TrackpadSurface(
-                    sink: model.sink,
-                    config: model.gestureConfig,
-                  ),
+                  child: _presenterVisible
+                      ? PresenterSurface(
+                          sink: model.sink,
+                          source: model.motionSource,
+                          config: model.motionConfig,
+                          absoluteSpotlight: model.absoluteSpotlightEffective,
+                        )
+                      : TrackpadSurface(
+                          sink: model.sink,
+                          config: model.gestureConfig,
+                        ),
                 ),
               ),
             if (_keyboardVisible && capabilities.contains(Capability.keyboard))

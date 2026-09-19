@@ -5,7 +5,17 @@ library;
 
 import 'input_event.dart';
 
-enum Capability { pointer, keyboard, discreteGesture, phasedGesture, mediaKeys }
+enum Capability {
+  pointer,
+  keyboard,
+  discreteGesture,
+  phasedGesture,
+  mediaKeys,
+
+  /// Accepts [PointerAbsolute]. Transports without it must drop absolute
+  /// events (never fake them with relative deltas).
+  absolutePointer,
+}
 
 enum SinkState { disconnected, connecting, connected, error }
 

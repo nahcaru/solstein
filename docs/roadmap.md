@@ -26,6 +26,8 @@ Control a Mac with nothing installed on it.
 
 - [ ] Non-US keyboards / CJK (clipboard-paste route candidate)
 - [ ] Onboarding, haptics, theming; Play Store release
+- [x] Presenter / laser-pointer mode over HID: gyro gliding, Precision spotlight, Prev/Next, Click (ADR-007). Verified on a Pixel 7a with one host; tune `countsPerRadian` and check the other OSes.
+- [ ] Presenter mode with true absolute pointing (spotlight). A second Mouse collection in the HID descriptor broke the host's mouse buttons (ADR-007), so this waits for the v2 helper (native injection) unless a Digitizer-based report is proven on real hosts.
 
 ## v2 — Helper (Tier 2)
 

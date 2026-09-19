@@ -61,6 +61,32 @@ class PointerMove extends InputEvent {
   String toString() => 'PointerMove($dx, $dy)';
 }
 
+/// Absolute pointer position, normalized 0.0–1.0 across the host's desktop
+/// (0,0 = top-left). Used by presenter spotlight mode.
+///
+/// Stays normalized on the wire: the HID transport quantizes to its
+/// descriptor's 0…32767 grid, a v2 helper multiplies by its own screen size.
+/// Neither resolution belongs in the vocabulary. A transport without
+/// [Capability.absolutePointer] must **drop** this event, never synthesize a
+/// relative delta from it — the host's pointer acceleration makes the current
+/// cursor position unknowable, and guessing causes cursor runaway.
+class PointerAbsolute extends InputEvent {
+  const PointerAbsolute(this.x, this.y);
+
+  final double x;
+  final double y;
+
+  @override
+  bool operator ==(Object other) =>
+      other is PointerAbsolute && other.x == x && other.y == y;
+
+  @override
+  int get hashCode => Object.hash(PointerAbsolute, x, y);
+
+  @override
+  String toString() => 'PointerAbsolute($x, $y)';
+}
+
 class ButtonEvent extends InputEvent {
   const ButtonEvent(this.button, {required this.down});
 
