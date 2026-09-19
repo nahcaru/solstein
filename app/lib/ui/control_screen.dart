@@ -66,6 +66,7 @@ class _ControlScreenState extends State<ControlScreen> {
                   child: TrackpadSurface(
                     sink: model.sink,
                     config: model.gestureConfig,
+                    hapticsEnabled: model.hapticsEnabled,
                   ),
                 ),
               ),

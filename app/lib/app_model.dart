@@ -109,6 +109,9 @@ class AppModel extends ChangeNotifier {
   /// layout: running the Japanese IME on a US-layout Mac is common.
   bool showImeKeys = false;
 
+  /// Haptic feedback on trackpad clicks. On by default.
+  bool hapticsEnabled = true;
+
   /// The host's physical keyboard layout. Independent of [targetOs] — a Mac
   /// can be JIS, a Linux box AZERTY.
   HostLayoutId _hostLayoutId = HostLayoutId.us;
@@ -130,6 +133,7 @@ class AppModel extends ChangeNotifier {
   static const _kNaturalScroll = 'naturalScroll';
   static const _kHostLayout = 'hostLayout';
   static const _kShowImeKeys = 'showImeKeys';
+  static const _kHapticsEnabled = 'hapticsEnabled';
 
   static HostLayoutId _layoutFromIndex(int? index) =>
       (index != null && index >= 0 && index < HostLayoutId.values.length)
@@ -148,6 +152,7 @@ class AppModel extends ChangeNotifier {
     _transport.naturalScroll = naturalScroll;
     _hostLayoutId = _layoutFromIndex(prefs.getInt(_kHostLayout));
     showImeKeys = prefs.getBool(_kShowImeKeys) ?? false;
+    hapticsEnabled = prefs.getBool(_kHapticsEnabled) ?? true;
     notifyListeners();
   }
 
@@ -199,6 +204,13 @@ class AppModel extends ChangeNotifier {
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_kShowImeKeys, value);
+  }
+
+  Future<void> setHapticsEnabled(bool value) async {
+    hapticsEnabled = value;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kHapticsEnabled, value);
   }
 
   Future<bool> ensurePermissions() => _transport.ensurePermissions();

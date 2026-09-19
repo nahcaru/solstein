@@ -89,6 +89,12 @@ class SettingsScreen extends StatelessWidget {
               value: model.naturalScroll,
               onChanged: model.setNaturalScroll,
             ),
+            SwitchListTile(
+              title: const Text('Haptics on click'),
+              subtitle: const Text('Vibrate on tap, right, and middle click'),
+              value: model.hapticsEnabled,
+              onChanged: model.setHapticsEnabled,
+            ),
             if (imeKeysFor(model.targetOs) != null)
               SwitchListTile(
                 title: const Text('Show IME keys (かな / 英数)'),
