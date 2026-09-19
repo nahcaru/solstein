@@ -163,3 +163,37 @@ Anything the host layout cannot express is deferred to v2. Prior art agrees:
 Chromium's remoting protocol pairs a `usb_keycode` `KeyEvent` with a UTF-8
 `TextEvent` for "input method different from physical keyboards, including
 software keyboard" — the split Helm now mirrors across v1/v2.
+
+---
+
+## ADR-007: Host layout scope is US and JIS only
+
+**Status**: Accepted
+**Date**: 2026-09-18
+
+### Context
+
+Once `HostLayout` shipped as a data-only seam (see the design note in
+`app/lib/hid/keymap.dart` and `docs/superpowers/specs/2026-07-16-v1-keyboard-design.md`),
+the natural next question was how many layouts to add — French, German,
+Thai, Arabic, Korean physical layout, etc. Each requires per-key verification
+against a real host, per the existing rule that layouts ship only once
+confirmed (the JIS table's own `¥ | \ _` and Option+¥ backslash mistakes,
+caught only by real-device testing, are the cautionary example). CJK scripts
+already type via the host's own IME on top of the existing US/JIS tables
+(ADR-006) — they were never blocked on a new layout.
+
+### Decision
+
+v1 ships US and JIS only. The other layouts aren't ruled out architecturally —
+`HostLayout` already supports letter-level overrides for a future AZERTY or
+QWERTZ — but building and verifying tables for languages nobody here actually
+types on is effort without a way to confirm correctness. Add a layout when
+someone has a real host to test it against, not before.
+
+### Consequences
+
+Non-US-non-JIS hosts (French, German, Thai, Arabic keyboards, etc.) aren't
+supported yet; typing on Helm against one of those layouts will send
+US-positioned usage codes, matching pre-JIS v1 behavior for that host. Revisit
+per-layout, on demand, each as its own small verified addition — not a batch.

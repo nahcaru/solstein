@@ -24,8 +24,10 @@ Control a Mac with nothing installed on it.
 
 ## v1 — Store-ready
 
-- [ ] Non-US host layouts (US, JIS; others by request) + かな/英数 IME keys
-      — CJK itself already works via the host's IME (see ADR-006)
+- [x] Host layouts: US, JIS (verified on a real JIS Mac) + かな/英数 IME keys
+      — CJK itself already works via the host's IME (see ADR-006). Other
+      layouts (French, German, Thai, Arabic, etc.) deferred by design until
+      someone has a real host to verify against (see ADR-007)
 - [ ] Onboarding, haptics, theming; Play Store release
 
 ## v2 — Helper (Tier 2)
