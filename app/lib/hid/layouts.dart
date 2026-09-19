@@ -76,7 +76,10 @@ const Map<String, KeyStroke> _jisOverrides = {
   // JIS-only keys.
   '¥': KeyStroke(Mod.none, Usage.intl3),
   '|': KeyStroke(Mod.lShift, Usage.intl3),
-  r'\': KeyStroke(Mod.none, Usage.intl1), // ろ
+  // The ろ key (intl1) only ever produces an underscore on macOS, shifted or
+  // not — unlike Windows it does not double as backslash. macOS's own JIS
+  // shortcut for \ is Option+¥, confirmed against a real JIS Mac.
+  r'\': KeyStroke(Mod.lAlt, Usage.intl3),
   '_': KeyStroke(Mod.lShift, Usage.intl1),
   // @ takes the US [ position; brackets move one key right.
   '@': KeyStroke(Mod.none, 0x2F),

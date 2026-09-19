@@ -95,10 +95,10 @@ void main() {
       expect(jis.strokeFor('*'), const KeyStroke(Mod.lShift, 0x34));
     });
 
-    test('JIS-only keys: ¥ on International3, backslash on the ろ key', () {
+    test('JIS-only keys: ¥ on International3, backslash is Option+¥', () {
       expect(jis.strokeFor('¥'), const KeyStroke(Mod.none, Usage.intl3));
       expect(jis.strokeFor('|'), const KeyStroke(Mod.lShift, Usage.intl3));
-      expect(jis.strokeFor(r'\'), const KeyStroke(Mod.none, Usage.intl1));
+      expect(jis.strokeFor(r'\'), const KeyStroke(Mod.lAlt, Usage.intl3));
       expect(jis.strokeFor('_'), const KeyStroke(Mod.lShift, Usage.intl1));
     });
 
