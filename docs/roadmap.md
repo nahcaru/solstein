@@ -26,8 +26,10 @@ Control a Mac with nothing installed on it.
 
 - [ ] Non-US keyboards / CJK (clipboard-paste route candidate)
 - [ ] Onboarding, haptics, theming; Play Store release
-- [x] Presenter / laser-pointer mode over HID: gyro gliding, Precision spotlight, Prev/Next, Click (ADR-007). Verified on a Pixel 7a with one host; tune `countsPerRadian` and check the other OSes.
-- [ ] Presenter mode with true absolute pointing (spotlight). A second Mouse collection in the HID descriptor broke the host's mouse buttons (ADR-007), so this waits for the v2 helper (native injection) unless a Digitizer-based report is proven on real hosts.
+- [x] Presenter / laser-pointer mode over HID (ADR-007, ADR-008): gyro pointing with a hold-to-move clutch, ballistics, tremor smoothing, Prev/Next/Click, haptics, volume keys, screen kept on, motion diagnostics. Verified on a Pixel 7a with one host.
+- [ ] Presenter: verify the Laser button's shortcuts (PowerPoint Ctrl/⌘+L, Google Slides L, Keynote C) in real slideshows; tune the smoothing, ballistics and `countsPerRadian` defaults on a phone; check the other OSes.
+- [ ] Presenter with true absolute pointing. A second Mouse collection in the HID descriptor broke the host's mouse buttons (ADR-007), so this waits for the v2 helper (native injection) unless a Digitizer-based report is proven on real hosts.
+- [ ] Presenter on-screen effects (v2 helper): dimmed spotlight, magnifier and digital laser drawn in an always-on-top overlay (CGEvent/overlay window on macOS, a topmost layer on Windows) — the part of a presentation remote that cannot be done over HID.
 
 ## v2 — Helper (Tier 2)
 

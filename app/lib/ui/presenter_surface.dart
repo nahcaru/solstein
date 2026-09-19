@@ -1,11 +1,14 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../core/input_event.dart';
 import '../core/input_sink.dart';
 import '../hid/keymap_us.dart';
+import '../motion/motion_sample.dart';
 import '../motion/motion_session.dart';
+import '../presenter/presenter_host.dart';
 
 /// Presenter / laser-pointer mode: phone motion drives the host cursor.
 ///
@@ -19,13 +22,33 @@ class PresenterSurface extends StatefulWidget {
     super.key,
     required this.sink,
     required this.session,
+    required this.host,
     required this.clutch,
+    required this.volumeKeys,
+    this.laser,
+    this.active = true,
   });
 
   final InputSink sink;
 
   /// The shared engine and sensor feed (see [MotionSession]).
   final MotionSession session;
+
+  /// Keep-awake and volume-key access.
+  final PresenterHost host;
+
+  /// Whether volume up/down act as Prev/Next.
+  final bool volumeKeys;
+
+  /// False while another screen (Settings, diagnostics) is on top. The
+  /// presenter stays mounted underneath, so without this it would keep moving
+  /// the host cursor, hold the volume keys and keep the sensors running while
+  /// the user scrolls a settings list.
+  final bool active;
+
+  /// Keystroke that toggles the slideshow app's built-in laser pointer;
+  /// null hides the Laser button.
+  final KeyStroke? laser;
 
   /// True: the cursor moves only while the pad is held. False ("always on"):
   /// it moves unless the pad is held, which freezes it.
@@ -38,6 +61,8 @@ class PresenterSurface extends StatefulWidget {
 class _PresenterSurfaceState extends State<PresenterSurface>
     with WidgetsBindingObserver {
   StreamSubscription<Object>? _errors;
+  StreamSubscription<MotionSample>? _recovered;
+  StreamSubscription<VolumeKey>? _volumeKeySub;
   bool _attached = false;
   bool _padHeld = false;
   String? _sensorError;
@@ -51,16 +76,32 @@ class _PresenterSurfaceState extends State<PresenterSurface>
     _errors = _session.errors.listen((_) {
       if (mounted) setState(() => _sensorError = 'Motion sensors unavailable');
     });
-    _attach();
+    // Samples arriving again mean a transient error is over.
+    _recovered = _session.samples.listen((_) {
+      if (_sensorError != null && mounted) setState(() => _sensorError = null);
+    });
+    if (widget.active) _attach();
   }
 
   @override
   void didUpdateWidget(PresenterSurface oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.clutch != widget.clutch) {
+    if (oldWidget.active != widget.active) {
+      if (widget.active) {
+        _attach();
+      } else {
+        _session.release();
+        _detach();
+        _padHeld = false;
+      }
+    }
+    if (oldWidget.clutch != widget.clutch && _attached) {
       // The pad changes meaning; whatever the finger is doing, start over.
       _padHeld = false;
       _syncClutch();
+    }
+    if (oldWidget.volumeKeys != widget.volumeKeys && _attached) {
+      _syncVolumeKeys();
     }
   }
 
@@ -68,6 +109,7 @@ class _PresenterSurfaceState extends State<PresenterSurface>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _errors?.cancel();
+    _recovered?.cancel();
     _session.release(); // nothing may stay held after this screen is gone
     _detach();
     super.dispose();
@@ -77,7 +119,7 @@ class _PresenterSurfaceState extends State<PresenterSurface>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     switch (state) {
       case AppLifecycleState.resumed:
-        _attach();
+        if (widget.active) _attach();
       case AppLifecycleState.inactive:
       case AppLifecycleState.hidden:
       case AppLifecycleState.paused:
@@ -96,12 +138,31 @@ class _PresenterSurfaceState extends State<PresenterSurface>
     _attached = true;
     _session.attach();
     _syncClutch();
+    widget.host.setKeepScreenOn(true);
+    _syncVolumeKeys();
   }
 
   void _detach() {
     if (!_attached) return;
     _attached = false;
     _session.detach();
+    widget.host.setKeepScreenOn(false);
+    _volumeKeySub?.cancel();
+    _volumeKeySub = null;
+    widget.host.setVolumeKeysCaptured(false);
+  }
+
+  /// Volume keys are captured only while presenting and only if enabled, so
+  /// the phone's volume works normally everywhere else.
+  void _syncVolumeKeys() {
+    _volumeKeySub?.cancel();
+    _volumeKeySub = null;
+    widget.host.setVolumeKeysCaptured(widget.volumeKeys);
+    if (!widget.volumeKeys) return;
+    _volumeKeySub = widget.host.volumeKeys.listen((key) {
+      HapticFeedback.lightImpact();
+      _tapKey(key == VolumeKey.up ? Usage.pageUp : Usage.pageDown);
+    });
   }
 
   /// Brings the engine's clutch in line with the pad and the setting.
@@ -114,6 +175,7 @@ class _PresenterSurfaceState extends State<PresenterSurface>
 
   void _setPad(bool held) {
     if (_padHeld == held) return;
+    if (held) HapticFeedback.selectionClick();
     setState(() => _padHeld = held);
     _syncClutch();
   }
@@ -121,9 +183,9 @@ class _PresenterSurfaceState extends State<PresenterSurface>
   /// Slide keys are plain Page Up / Page Down on every OS and every deck app
   /// (Keynote, PowerPoint, Google Slides, PDF viewers), so they need no
   /// per-OS shortcut table.
-  void _tapKey(int usage) {
-    widget.sink.send(KeyInput(usage, Mod.none, down: true));
-    widget.sink.send(KeyInput(usage, Mod.none, down: false));
+  void _tapKey(int usage, {int modifiers = Mod.none}) {
+    widget.sink.send(KeyInput(usage, modifiers, down: true));
+    widget.sink.send(KeyInput(usage, modifiers, down: false));
   }
 
   @override
@@ -164,7 +226,10 @@ class _PresenterSurfaceState extends State<PresenterSurface>
                   label: 'Prev',
                   color: scheme.surfaceContainerHigh,
                   activeColor: scheme.primaryContainer,
-                  onDown: () => _tapKey(Usage.pageUp),
+                  onDown: () {
+                    HapticFeedback.lightImpact();
+                    _tapKey(Usage.pageUp);
+                  },
                 ),
               ),
               const SizedBox(width: 12),
@@ -175,12 +240,30 @@ class _PresenterSurfaceState extends State<PresenterSurface>
                   label: 'Click',
                   color: scheme.surfaceContainerHigh,
                   activeColor: scheme.primaryContainer,
-                  onDown: () =>
-                      _session.emitAll(_session.engine.click(down: true)),
+                  onDown: () {
+                    HapticFeedback.lightImpact();
+                    _session.emitAll(_session.engine.click(down: true));
+                  },
                   onUp: () =>
                       _session.emitAll(_session.engine.click(down: false)),
                 ),
               ),
+              if (widget.laser case final laser?) ...[
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _PadButton(
+                    key: const ValueKey('laser'),
+                    icon: Icons.gps_fixed,
+                    label: 'Laser',
+                    color: scheme.surfaceContainerHigh,
+                    activeColor: scheme.primaryContainer,
+                    onDown: () {
+                      HapticFeedback.lightImpact();
+                      _tapKey(laser.usage, modifiers: laser.modifiers);
+                    },
+                  ),
+                ),
+              ],
               const SizedBox(width: 12),
               Expanded(
                 flex: 2, // Next is the button pressed most, often blind
@@ -190,7 +273,10 @@ class _PresenterSurfaceState extends State<PresenterSurface>
                   label: 'Next',
                   color: scheme.surfaceContainerHigh,
                   activeColor: scheme.primaryContainer,
-                  onDown: () => _tapKey(Usage.pageDown),
+                  onDown: () {
+                    HapticFeedback.lightImpact();
+                    _tapKey(Usage.pageDown);
+                  },
                 ),
               ),
             ],
@@ -228,16 +314,24 @@ class _PadButton extends StatefulWidget {
 }
 
 class _PadButtonState extends State<_PadButton> {
-  bool _pressed = false;
+  /// Fingers currently on the pad. The pad is pressed from the first finger
+  /// down to the last finger up, so a second finger lifting early does not
+  /// release it.
+  final _pointers = <int>{};
 
-  void _down() {
-    setState(() => _pressed = true);
+  bool get _pressed => _pointers.isNotEmpty;
+
+  void _down(int pointer) {
+    final first = _pointers.isEmpty;
+    _pointers.add(pointer);
+    if (!first) return;
+    setState(() {});
     widget.onDown();
   }
 
-  void _up() {
-    if (!_pressed) return;
-    setState(() => _pressed = false);
+  void _up(int pointer) {
+    if (!_pointers.remove(pointer) || _pointers.isNotEmpty) return;
+    setState(() {});
     widget.onUp?.call();
   }
 
@@ -246,9 +340,9 @@ class _PadButtonState extends State<_PadButton> {
     final scheme = Theme.of(context).colorScheme;
     return Listener(
       behavior: HitTestBehavior.opaque,
-      onPointerDown: (_) => _down(),
-      onPointerUp: (_) => _up(),
-      onPointerCancel: (_) => _up(),
+      onPointerDown: (e) => _down(e.pointer),
+      onPointerUp: (e) => _up(e.pointer),
+      onPointerCancel: (e) => _up(e.pointer),
       child: Container(
         decoration: BoxDecoration(
           color: _pressed ? widget.activeColor : widget.color,

@@ -3,6 +3,7 @@ package dev.taira.helm
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
+import android.view.KeyEvent
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import io.flutter.embedding.android.FlutterActivity
@@ -14,10 +15,14 @@ class MainActivity : FlutterActivity(), HidManager.Listener {
 
     private var stateSink: EventChannel.EventSink? = null
     private var permissionResult: MethodChannel.Result? = null
+    private lateinit var presenterBridge: PresenterBridge
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         HidManager.listener = this
+        presenterBridge = PresenterBridge(this).also {
+            it.register(flutterEngine.dartExecutor.binaryMessenger)
+        }
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, METHOD_CHANNEL)
             .setMethodCallHandler { call, result ->
@@ -137,9 +142,17 @@ class MainActivity : FlutterActivity(), HidManager.Listener {
         if (HidManager.isConnected) HidService.start(this)
     }
 
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (::presenterBridge.isInitialized && presenterBridge.handleKeyEvent(event)) {
+            return true
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
     override fun onPause() {
         // Stuck-key prevention: neutralize the host whenever the UI pauses.
         HidManager.releaseAll()
+        if (::presenterBridge.isInitialized) presenterBridge.release()
         super.onPause()
     }
 

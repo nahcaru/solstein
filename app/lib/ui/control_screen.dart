@@ -22,6 +22,18 @@ class _ControlScreenState extends State<ControlScreen> {
   bool _keyboardVisible = false;
   bool _presenterVisible = false;
 
+  /// Settings is pushed over this screen; the presenter underneath must go
+  /// quiet while it is open.
+  bool _covered = false;
+
+  Future<void> _openSettings(AppModel model) async {
+    setState(() => _covered = true);
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => SettingsScreen(model: model)),
+    );
+    if (mounted) setState(() => _covered = false);
+  }
+
   @override
   Widget build(BuildContext context) {
     final model = widget.model;
@@ -58,11 +70,7 @@ class _ControlScreenState extends State<ControlScreen> {
           IconButton(
             icon: const Icon(Icons.settings),
             tooltip: 'Settings',
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => SettingsScreen(model: model),
-              ),
-            ),
+            onPressed: () => _openSettings(model),
           ),
         ],
       ),
@@ -78,7 +86,11 @@ class _ControlScreenState extends State<ControlScreen> {
                       ? PresenterSurface(
                           sink: model.sink,
                           session: model.motion,
+                          host: model.presenterHost,
                           clutch: model.motionClutch,
+                          volumeKeys: model.volumeKeys,
+                          laser: model.laserStroke,
+                          active: !_covered,
                         )
                       : TrackpadSurface(
                           sink: model.sink,

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:helm/core/input_event.dart';
 import 'package:helm/motion/motion_config.dart';
@@ -20,6 +22,26 @@ MotionSample sample(int ms, {double gz = 0}) => MotionSample(
 void feed(FakeMotionSource source, {double gz = 0, int ms = 500, int from = 0}) {
   for (var t = 0; t <= ms; t += 10) {
     source.emit(sample(from + t, gz: gz));
+  }
+}
+
+/// A source whose start() finishes only when the test says so.
+class SlowStartSource implements MotionSource {
+  final started = Completer<void>();
+  int stops = 0;
+  bool running = false;
+  @override
+  Stream<MotionSample> get samples => const Stream.empty();
+  @override
+  Future<void> start() async {
+    await started.future;
+    running = true;
+  }
+
+  @override
+  Future<void> stop() async {
+    stops++;
+    running = false;
   }
 }
 
@@ -128,6 +150,63 @@ void main() {
     source.emitError(Exception('sensor died'));
     await sub.cancel();
     expect(errors, hasLength(1));
+  });
+
+  group('dispose', () {
+    test('stops the sensors and releases a held click and the clutch',
+        () async {
+      await session.attach();
+      session.emitAll(session.engine.engage());
+      session.emitAll(session.engine.click(down: true));
+      out.clear();
+      await session.dispose();
+      expect(source.running, isFalse);
+      expect(out, [const ButtonEvent(Button.left, down: false)]);
+      expect(session.engine.engaged, isFalse);
+    });
+
+    test('is safe to call twice', () async {
+      await session.dispose();
+      await session.dispose();
+    });
+
+    test('a later attach does nothing and does not start the sensors',
+        () async {
+      await session.dispose();
+      await session.attach();
+      expect(source.startCount, 0);
+      expect(session.active, isFalse);
+    });
+
+    test('samples and errors arriving after dispose are ignored', () async {
+      await session.attach();
+      await session.dispose();
+      // Would raise "Cannot add new events after calling close" if not.
+      feed(source, gz: -1.0, ms: 100);
+      source.emitError(Exception('late'));
+      expect(out, isEmpty);
+    });
+  });
+
+  test('a start() that fails after dispose does not throw', () async {
+    final slow = SlowStartSource();
+    final s = MotionSession(source: slow, emit: out.add);
+    final attaching = s.attach();
+    await s.dispose();
+    slow.started.completeError(StateError('no gyroscope'));
+    await attaching; // must complete normally, not with a closed-controller error
+  });
+
+  test('a detach during a slow start does not leave the sensors running',
+      () async {
+    final slow = SlowStartSource();
+    final s = MotionSession(source: slow, emit: out.add);
+    final attaching = s.attach();
+    s.detach(); // the user left before start() finished
+    slow.started.complete();
+    await attaching;
+    expect(slow.running, isFalse);
+    await s.dispose();
   });
 
   test('a source that cannot start reports the error instead of throwing',

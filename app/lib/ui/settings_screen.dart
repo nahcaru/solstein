@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../app_model.dart';
+import '../hid/laser_shortcuts.dart';
 import '../hid/shortcut_tables.dart';
 import 'motion_diagnostics_screen.dart';
 
@@ -107,6 +108,34 @@ class SettingsScreen extends StatelessWidget {
                   'Off: it always follows, and holding the pad freezes it'),
               value: model.motionClutch,
               onChanged: model.setMotionClutch,
+            ),
+            ListTile(
+              title: const Text('Slide app'),
+              subtitle: Text(
+                model.laserStroke == null
+                    ? '${model.deckApp.label} has no laser pointer shortcut on '
+                        'this computer, so the Laser button is hidden'
+                    : 'The Laser button turns on ${model.deckApp.label}\'s '
+                        'built-in laser pointer',
+              ),
+              trailing: DropdownButton<DeckApp>(
+                value: model.deckApp,
+                onChanged: (app) {
+                  if (app != null) model.setDeckApp(app);
+                },
+                items: [
+                  for (final app in DeckApp.values)
+                    DropdownMenuItem(value: app, child: Text(app.label)),
+                ],
+              ),
+            ),
+            SwitchListTile(
+              title: const Text('Volume keys'),
+              subtitle: const Text(
+                  'While presenting: volume up = Prev, volume down = Next, '
+                  'without looking at the screen'),
+              value: model.volumeKeys,
+              onChanged: model.setVolumeKeys,
             ),
             ListTile(
               title: const Text('Motion sensors'),

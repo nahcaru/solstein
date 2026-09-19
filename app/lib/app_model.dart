@@ -3,19 +3,26 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'core/input_sink.dart';
 import 'engine/gesture_config.dart';
+import 'hid/keymap_us.dart' show KeyStroke;
+import 'hid/laser_shortcuts.dart';
 import 'hid/shortcut_tables.dart';
 import 'motion/motion_config.dart';
 import 'motion/motion_session.dart';
 import 'motion/motion_source.dart';
 import 'motion/sensors_motion_source.dart';
+import 'presenter/presenter_host.dart';
 import 'transport/hid_transport.dart';
 
 /// App-wide state: the transport, user settings, and connection status.
 /// UI reads [sink] as an [InputSink] and adapts to its capabilities.
 class AppModel extends ChangeNotifier {
-  AppModel({HidTransport? transport, MotionSource? motionSource})
-      : _transport = transport ?? HidTransport(),
-        _motionSource = motionSource ?? SensorsMotionSource() {
+  AppModel({
+    HidTransport? transport,
+    MotionSource? motionSource,
+    PresenterHost? presenterHost,
+  })  : _transport = transport ?? HidTransport(),
+        _motionSource = motionSource ?? SensorsMotionSource(),
+        presenterHost = presenterHost ?? MethodChannelPresenterHost() {
     _transport.state.listen((s) {
       // Navigation follows real state transitions: landing on connected
       // opens the control surface, losing the link falls back to the list.
@@ -87,6 +94,9 @@ class AppModel extends ChangeNotifier {
 
   final MotionSource _motionSource;
 
+  /// Keep-awake and volume-key access for presenting hands-free.
+  final PresenterHost presenterHost;
+
   /// Presenter mode's shared engine and sensor feed. One instance for the app
   /// session, so the learned gyro bias survives leaving and re-entering
   /// presenter mode, and diagnostics recalibrates the engine doing the pointing.
@@ -110,6 +120,12 @@ class AppModel extends ChangeNotifier {
   double motionAccel = 1.4;
   bool motionClutch = true;
 
+  /// Volume up/down act as Prev/Next while presenting.
+  bool volumeKeys = true;
+
+  /// Which slideshow app's built-in laser the Laser button toggles.
+  DeckApp deckApp = DeckApp.powerpoint;
+
   MotionConfig get motionConfig => MotionConfig(
         pointerGain: motionGain,
         ballisticsExponent: motionAccel,
@@ -131,6 +147,8 @@ class AppModel extends ChangeNotifier {
   static const _kMotionGain = 'motionGain';
   static const _kMotionAccel = 'motionAccel';
   static const _kMotionClutch = 'motionClutch';
+  static const _kVolumeKeys = 'volumeKeys';
+  static const _kDeckApp = 'deckApp';
 
   Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
@@ -145,6 +163,11 @@ class AppModel extends ChangeNotifier {
     motionGain = (prefs.getDouble(_kMotionGain) ?? 1.0).clamp(0.1, 2.0);
     motionAccel = (prefs.getDouble(_kMotionAccel) ?? 1.4).clamp(1.0, 1.8);
     motionClutch = prefs.getBool(_kMotionClutch) ?? true;
+    volumeKeys = prefs.getBool(_kVolumeKeys) ?? true;
+    final deck = prefs.getInt(_kDeckApp);
+    deckApp = deck != null && deck >= 0 && deck < DeckApp.values.length
+        ? DeckApp.values[deck]
+        : DeckApp.powerpoint;
     motion.config = motionConfig;
     notifyListeners();
   }
@@ -203,6 +226,24 @@ class AppModel extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_kMotionClutch, value);
   }
+
+  Future<void> setVolumeKeys(bool value) async {
+    volumeKeys = value;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kVolumeKeys, value);
+  }
+
+  Future<void> setDeckApp(DeckApp app) async {
+    deckApp = app;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_kDeckApp, app.index);
+  }
+
+  /// The Laser button's keystroke for the current app and computer, or null
+  /// when that app has none there (the button is then hidden).
+  KeyStroke? get laserStroke => laserShortcut(deckApp, targetOs);
 
   Future<bool> ensurePermissions() => _transport.ensurePermissions();
 

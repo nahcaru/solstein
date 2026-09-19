@@ -54,14 +54,23 @@ UI adapts to `capabilities`; it never branches on concrete transport type.
 
 ### Presenter mode (laser pointer)
 
-`PresenterSurface` is a sibling of `TrackpadSurface`, toggled from the app bar. Phone motion flows `MotionSource` (`sensors_plus`: gyro + accelerometer) → `MotionEngine` (pure Dart, timestamped `MotionSample`s in, `InputEvent`s out) → `InputSink`. The engine mirrors `GestureEngine`: deterministic, no platform imports, unit-tested on synthetic streams.
+`PresenterSurface` is a sibling of `TrackpadSurface`, toggled from the app bar. Phone motion flows `MotionSource` (`sensors_plus`, 100 Hz gyro + accelerometer) → `MotionSession` → `MotionEngine` (pure Dart, timestamped `MotionSample`s in, `InputEvent`s out) → `InputSink`. The engine mirrors `GestureEngine`: deterministic, no platform imports, unit-tested on synthetic streams. `MotionSession` (owned by `AppModel`) holds the one shared engine and a reference-counted sensor feed, so the presenter and the motion-diagnostics screen see the same learned gyro bias and "Recalibrate" acts on the engine doing the pointing.
 
-- **Gliding** (default): angular velocity → relative `PointerMove`, like an air mouse.
-- **Spotlight** (held): orientation → absolute `PointerAbsolute`, gated on `Capability.absolutePointer` and a per-host setting. `HidTransport` does **not** declare that capability (a separate absolute HID report made hosts ignore the mouse buttons — ADR-007), so over HID the spotlight is slow relative "precision" pointing. The absolute path stays in the engine for a v2 helper that injects positions natively; a sink without the capability drops `PointerAbsolute`, never fakes it with relative deltas.
-- Rates are projected onto world axes using gravity, so a sweep stays horizontal however the phone is rolled about its pointing axis. Yaw has no absolute reference indoors, so it is re-zeroed on every spotlight press; pitch comes from gravity and cannot drift.
-- Prev/Next are plain Page Up / Page Down, sent directly — not through the per-OS gesture tables.
+The design follows how a presentation remote works (research note: Logicool Spotlight):
 
-Rationale and rejected alternatives: ADR-007.
+- **Virtual clutch**: the cursor follows the phone only while the big pad is held. The shake of tapping Click/Next never reaches the cursor, and an arm at its limit can let go and re-grip. "Hold to move" can be turned off; the pad then freezes the pointer instead.
+- **Roll compensation**: angular rates are projected onto world axes using gravity, so a sweep stays horizontal however the phone is rolled about its pointing axis.
+- **Tremor smoothing**: a One Euro filter on the projected rates. Low speed → low cutoff (4–12 Hz tremor drops to ~3%); high speed → the cutoff opens so a flick is not smeared.
+- **Ballistics**: output rate ∝ `|ω|^p`, normalized to unit gain at 1 rad/s. Slow motion is fine, quick flicks reach further. (The trackpad's `accelExponent` defaults to 1.0, i.e. linear — there was no existing curve to reuse.)
+- **Drift**: the gyro bias is learned whenever the phone is still — with a wide gate (0.15 rad/s) while the clutch is released and a tight one (0.05 rad/s) while engaged, so "always on" mode does not creep either and a bias that grows later is still found. It can be relearned in 2 s from the diagnostics screen.
+- **No wind-up handling needed**: output is relative, so the host stops the cursor at the screen edge and rotation beyond it is lost; swinging back responds immediately. (Wind-up only exists for absolute mapping, which HID cannot carry — ADR-007.)
+- **Quiet when covered**: Settings and the diagnostics screen are pushed over the presenter, so it releases the clutch, the volume keys and the sensors while they are open.
+- **Hands-free**: haptics on every button, screen kept on while presenting, and volume up/down as Prev/Next (`PresenterBridge.kt`; captured only while presenting, released on pause).
+- **Slide and laser keys** are sent directly, not through the per-OS gesture tables: Prev/Next are Page Up / Page Down; Laser toggles the slideshow app's own laser pointer (`hid/laser_shortcuts.dart`, PowerPoint / Google Slides / Keynote — **shortcuts not yet verified on hardware**).
+
+`PointerAbsolute` and `Capability.absolutePointer` stay in the shared vocabulary for a future helper; `HidTransport` does not declare the capability and drops the event. On-screen effects (dimmed spotlight, magnifier, digital laser) need software on the computer and are v2 helper work (roadmap).
+
+Rationale and rejected alternatives: ADR-007 (HID), ADR-008 (presenter design).
 
 ### Transports
 - **`HidTransport`** (v0.1): Dart side of a MethodChannel; Kotlin module owns `BluetoothHidDevice` (`registerApp` → callbacks → `sendReport`) inside a foreground service (`connectedDevice`). Collapses `GesturePhase` events into shortcut key reports at `ended && progress ≥ 0.5`. Spec: `hid-descriptor.md`.
@@ -81,7 +90,7 @@ Shared Dart core (BLE central, protocol decode, tray UI, per-OS gesture config) 
 
 - `getProfileProxy` failure (OEM disabled HID profile) → diagnostics screen, never crash.
 - Any disconnect/pause → send release-all mouse + keyboard reports (stuck-key prevention).
-- Presenter mode stops the sensor stream and resets the motion engine on app pause and on leaving the mode.
+- Presenter mode stops the sensor stream, opens the clutch, releases a held click, gives back the volume keys and the screen timeout on app pause and on leaving the mode.
 - Link congestion → latest-wins coalescing for moves/scroll/phases; **never** drop button/key events.
 
 ## Testing
@@ -93,4 +102,4 @@ Shared Dart core (BLE central, protocol decode, tray UI, per-OS gesture config) 
   - **Scroll/flick**: 2-finger scroll v+h → sign matches the host's natural-scroll setting → fast h-flick pages back/forward without a stray scroll.
   - **Gestures**: 3-finger ↑/↓/←/→ → 4-finger spread/pinch → 2-finger pinch-zoom → repeat each 3×, confirming the host-mode estimate never undoes itself; then click and confirm it resets.
   - **Keyboard**: typing with modifiers → per-OS modifier lineup → media row (volume/playback).
-  - **Presenter**: toggle the mode → sweep the phone and the cursor glides → roll the phone 45° and sweep horizontally, still horizontal → hold Spotlight ("Precision"): slower, finer gliding → hold still 5 s, no creep → Prev/Next step slides in Keynote, PowerPoint and Google Slides → Click clicks → background the app mid-click: no stuck button → leave presenter mode and **tap the trackpad: it must still click** (this is what a descriptor change broke — see ADR-007). If motion is inverted, flip both negations in the relative step *and* both in the absolute step together.
+  - **Presenter** (no re-pairing needed; first confirm the **trackpad tap still clicks** — a descriptor change once broke it, ADR-007): pad released → shaking the phone moves nothing; hold the pad → the cursor follows → tapping Click/Next does not nudge the cursor → slow motion is fine, a quick flick reaches far → hold still 5 s, no creep → roll the phone 45° and sweep horizontally, still horizontal → Prev/Next step slides in Keynote, PowerPoint and Google Slides → haptic on each button → the screen does not dim while presenting → volume up/down = Prev/Next, and normal volume again after leaving → **Laser** toggles the built-in laser in each app (PowerPoint Ctrl/⌘+L, Google Slides L, Keynote C with its pointer preference on; correct `laser_shortcuts.dart` where one is wrong) → background the app mid-click: no stuck button → Settings › Motion sensors: ~100 Hz, Recalibrate settles the bias. If motion is inverted, flip both negations in `MotionEngine._glide`.

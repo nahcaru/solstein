@@ -132,7 +132,7 @@ A presenter needs to point at the screen from across the room. Premium presenter
 ### Decision
 
 1. `MotionEngine`, a second pure-Dart engine beside `GestureEngine`: timestamped `MotionSample`s in, `InputEvent`s out, no platform imports. Rates come from a `MotionSource` seam (`sensors_plus` today), with gyro-bias learning while still, a gravity-derived complementary filter for pitch, and roll compensation about the pointing axis.
-2. Gliding maps angular velocity to relative `PointerMove` on the existing mouse report. Holding Spotlight over HID is slow relative "precision" pointing.
+2. Gliding maps angular velocity to relative `PointerMove` on the existing mouse report. (A separate Spotlight/Precision pad was tried and is superseded by the clutch and ballistics of ADR-008.)
 3. `PointerAbsolute(double x, double y)` (normalized 0.0–1.0) and `Capability.absolutePointer` exist in the vocabulary and the engine, but **`HidTransport` does not declare the capability and drops the event**. A v2 helper injecting positions natively can honour it.
 4. Prev/Next are Page Up / Page Down sent directly as `KeyInput`.
 
@@ -151,8 +151,47 @@ An absolute pointer was added as a fourth top-level descriptor collection (repor
 ### Consequences
 
 - Presenter mode works over HID with **no descriptor change and no re-pairing**.
-- The spotlight over HID is precision gliding, not direct pointing. True absolute pointing waits for the v2 helper.
+- There is no direct-pointing (absolute) spotlight over HID. True absolute pointing waits for the v2 helper.
 - **Any future descriptor change must be tested for regressions in the existing reports on real hosts**, not only by the golden-bytes test: the descriptor was well formed and its reports correct, and it still broke unrelated buttons.
 - Yaw has no absolute reference indoors (the magnetometer is unreliable), so an absolute spotlight would re-zero yaw on every press; pitch is gravity-anchored and does not drift.
 - `MotionConfig` has value equality, `GestureConfig` does not. A config change resets the engine, and a motion reset discards the gyro-bias estimate, so a freshly built but identical config must not read as "changed". `GestureConfig` has the same latent behaviour today; harmless there, worth fixing separately.
 - Sign conventions and `countsPerRadian` are derived, not measured; tune on a real phone.
+
+---
+
+## ADR-008: Presenter mode is a hold-to-move clutch with ballistics and tremor smoothing
+
+**Status**: Accepted
+**Date**: 2026-09-19
+
+### Context
+
+The first presenter mode moved the cursor whenever the phone moved. On a phone that is a real problem: tapping Click or Next shakes the phone, and the shake lands on the cursor. Its speed response was linear, with no hand-tremor handling. A research note on how the Logicool Spotlight remote works (gyro + accelerometer, a button as a virtual clutch, roll compensation, tremor filtering, non-linear acceleration) described the missing pieces.
+
+### Decision
+
+- **Virtual clutch.** The cursor follows the phone only while the big pad is held. A "Hold to move" setting turns this off ("always on"), in which case the pad freezes the pointer. The pad replaces the separate Spotlight/Precision pad.
+- **Ballistics.** Output angular rate goes through `sign(ω)·ω_ref·(|ω|/ω_ref)^p`, so unit gain sits at `ω_ref` = 1 rad/s and p = 1 is the old linear response. Default p = 1.4, adjustable in Settings (1.0–1.8). It acts on angular rate, so it does not depend on the sampling rate.
+- **Tremor smoothing.** A One Euro filter on the projected yaw/pitch rates (min cutoff 1.5 Hz, beta 0.08). Measured on synthetic input: a ±0.2 rad/s tremor at 6–12 Hz is reduced to ~3%; a 0.5 Hz, ±1 rad/s sweep passes at ~99.5%.
+- **Bias is learned whenever the phone is still**, with a wide gate (0.15 rad/s) while the clutch is released and a tight one (0.05 rad/s) while engaged. An independent review showed the first design (learn only while released) let "always on" mode creep forever, and that a one-shot narrowing gate locked out a bias that grew later; neither gate is one-shot now. A 2-second Recalibrate is available from a motion-diagnostics screen showing sample rate, raw gyro and learned bias.
+- **One shared engine.** `MotionSession`, owned by `AppModel`, holds the engine and a reference-counted sensor feed, so the presenter and diagnostics share the learned bias and Recalibrate acts on the engine doing the pointing. `MotionEngine.config` is swappable in place so dragging a slider does not discard calibration.
+- **Sampling at 100 Hz.**
+- **Hands-free.** Haptics, keep-screen-on, and volume keys as Prev/Next through a small `PresenterBridge`. No HID descriptor change.
+- **Slideshow laser toggle.** A Laser button sends the app's own laser-pointer shortcut (PowerPoint Ctrl/⌘+L, Google Slides L, Keynote C). Because the host cursor already follows the phone, the built-in laser follows it too, with nothing installed. Not verified on hardware yet.
+
+### Alternatives Considered
+
+- **Keep always-on motion.** No new concept, but tap-shake on the cursor stays and there is no way to re-grip at the end of an arm's range.
+- **Keep a separate Precision pad.** Explicit fine positioning, but one more control to learn; the ballistics curve gives the same control automatically.
+- **A low-pass filter with a fixed cutoff.** Simpler, but it either smears fast flicks or lets tremor through. One Euro adapts to speed.
+- **Anti-wind-up clamping (from the research note).** Not needed: output is relative, so the host clamps at the edge and the rotation beyond it is lost. It would matter only for absolute mapping, which HID cannot carry (ADR-007).
+- **Screen overlays (dimmed spotlight, magnifier, digital laser).** They need software on the computer; left to the v2 helper.
+
+### Consequences
+
+- The behaviour users saw first (always following) changes; "Hold to move" off restores it.
+- A bias that jumps by more than the tight gate while engaged in always-on mode is only recovered by releasing the pad (wide gate) or Recalibrate.
+- The smoothing and ballistics defaults are estimates. The diagnostics screen exists so they can be tuned on a real phone.
+- Volume-key capture depends on the device and OS version and must be tested on hardware.
+- The research note says the trackpad uses `f(v) = v^1.4`; the code's `accelExponent` default is 1.0 (linear), so there was no shared curve to reuse.
+- 100 Hz motion means about 100 HID mouse reports per second while moving. Watch for congestion; the sampling period can be lowered.

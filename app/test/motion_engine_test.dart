@@ -243,7 +243,17 @@ void main() {
           isEmpty);
     });
 
-    test('nothing is learned while engaged: a bias keeps creeping', () {
+    test('engaged: a small bias is learned away too (always-on mode)', () {
+      // Always-on keeps the engine engaged all the time; if learning stopped
+      // while engaged, a gyro bias would creep the pointer forever.
+      final engine = engaged();
+      engine.processAll(stream(gz: 0.03, ms: 20000));
+      expect(engine.processAll(stream(gz: 0.03, ms: 5000, startMs: 20010)),
+          isEmpty);
+    });
+
+    test('engaged: motion above the stillness gate is never absorbed', () {
+      // 0.08 rad/s is a slow deliberate sweep, not a bias, while engaged.
       final engine = engaged();
       final first = engine.processAll(stream(gz: 0.08, ms: 10000));
       final later =
@@ -251,6 +261,17 @@ void main() {
       expect(first, isNotEmpty);
       expect(later, isNotEmpty,
           reason: 'deliberate slow motion is never absorbed');
+    });
+
+    test('a bias that grows later is still learned (the gate never locks)',
+        () {
+      final engine = MotionEngine();
+      engine.processAll(stream(gz: 0.03, ms: 20000)); // learned
+      // Thermal drift: the true bias rises to 0.09 rad/s.
+      engine.processAll(stream(gz: 0.09, ms: 60000, startMs: 20010));
+      engine.engage();
+      expect(engine.processAll(stream(gz: 0.09, ms: 5000, startMs: 80020)),
+          isEmpty);
     });
 
     test('recalibrate relearns a large bias within its duration', () {
@@ -378,6 +399,43 @@ void main() {
       engine.reset();
       expect(engine.engaged, isFalse);
       expect(engine.gyroBias.z, 0);
+    });
+  });
+
+  group('config swap and stillness', () {
+    test('swapping the config keeps the bias and applies the new gain', () {
+      MotionEngine learned() {
+        final e = MotionEngine();
+        e.processAll(stream(gz: 0.03, ms: 15000)); // learns a 0.03 bias
+        return e..engage();
+      }
+
+      final unchanged = learned();
+      final swapped = learned()..config = const MotionConfig(pointerGain: 0.5);
+      expect(swapped.gyroBias.z, closeTo(0.03, 0.005),
+          reason: 'the bias survives the swap');
+      final full =
+          sumDx(unchanged.processAll(stream(gz: -1.0, ms: 500, startMs: 15010)));
+      final half =
+          sumDx(swapped.processAll(stream(gz: -1.0, ms: 500, startMs: 15010)));
+      expect(half, closeTo(full / 2, full * 0.03));
+    });
+
+    test('an equal config is a no-op', () {
+      final engine = MotionEngine()..engage();
+      engine.processAll(stream(gz: -1.0, ms: 200));
+      engine.config = const MotionConfig(); // same values
+      // No filter reset: the next sample continues smoothly.
+      expect(engine.processAll(stream(gz: -1.0, ms: 200, startMs: 210)),
+          isNotEmpty);
+    });
+
+    test('still reports whether the engine would learn right now', () {
+      final engine = MotionEngine();
+      engine.processAll(stream(ms: 100));
+      expect(engine.still, isTrue);
+      engine.processAll(stream(gz: 1.0, ms: 100, startMs: 110));
+      expect(engine.still, isFalse);
     });
   });
 

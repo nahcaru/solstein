@@ -1,12 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:helm/core/input_event.dart';
 import 'package:helm/core/input_sink.dart';
+import 'package:helm/hid/keymap_us.dart';
 import 'package:helm/motion/motion_sample.dart';
 import 'package:helm/motion/motion_session.dart';
+import 'package:helm/presenter/presenter_host.dart';
 import 'package:helm/ui/presenter_surface.dart';
 
 import 'support/fake_motion_source.dart';
+import 'support/fake_presenter_host.dart';
 
 class RecordingSink implements InputSink {
   final events = <InputEvent>[];
@@ -48,24 +52,53 @@ void main() {
   late RecordingSink sink;
   late FakeMotionSource source;
   late MotionSession session;
+  late FakePresenterHost presenterHost;
 
   setUp(() {
     sink = RecordingSink();
     source = FakeMotionSource();
+    presenterHost = FakePresenterHost();
     session = MotionSession(source: source, emit: sink.send);
   });
 
   tearDown(() => session.dispose());
 
-  Widget host({bool clutch = true}) => MaterialApp(
+  Widget host({
+    bool clutch = true,
+    bool volumeKeys = true,
+    KeyStroke? laser,
+    bool active = true,
+  }) =>
+      MaterialApp(
         home: Scaffold(
           body: PresenterSurface(
             sink: sink,
             session: session,
+            host: presenterHost,
             clutch: clutch,
+            volumeKeys: volumeKeys,
+            laser: laser,
+            active: active,
           ),
         ),
       );
+
+  /// Records HapticFeedback calls made through the platform channel.
+  List<String> captureHaptics(WidgetTester tester) {
+    final log = <String>[];
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'HapticFeedback.vibrate') {
+          log.add(call.arguments as String);
+        }
+        return null;
+      },
+    );
+    addTearDown(() => tester.binding.defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemChannels.platform, null));
+    return log;
+  }
 
   Finder pad(String key) => find.byKey(ValueKey(key));
   Iterable<PointerMove> moves() => sink.events.whereType<PointerMove>();
@@ -201,6 +234,33 @@ void main() {
     });
   });
 
+  group('laser toggle', () {
+    testWidgets('is hidden when the slide app has no laser shortcut',
+        (tester) async {
+      await tester.pumpWidget(host());
+      expect(pad('laser'), findsNothing);
+    });
+
+    testWidgets('sends the app\'s shortcut, modifiers included',
+        (tester) async {
+      final haptics = captureHaptics(tester);
+      await tester.pumpWidget(host(laser: const KeyStroke(Mod.lCtrl, 0x0F)));
+      await tester.tap(pad('laser'));
+      expect(sink.events, [
+        const KeyInput(0x0F, Mod.lCtrl, down: true), // Ctrl+L
+        const KeyInput(0x0F, Mod.lCtrl, down: false),
+      ]);
+      expect(haptics, ['HapticFeedbackType.lightImpact']);
+    });
+
+    testWidgets('does not squeeze Next off the screen', (tester) async {
+      await tester.pumpWidget(host(laser: const KeyStroke(Mod.none, 0x0F)));
+      expect(tester.takeException(), isNull);
+      expect(tester.getSize(pad('next')).width,
+          greaterThan(tester.getSize(pad('laser')).width * 1.5));
+    });
+  });
+
   group('lifecycle', () {
     testWidgets('leaving presenter mode mid-click releases the button once',
         (tester) async {
@@ -267,6 +327,200 @@ void main() {
       session.detach();
       expect(source.running, isFalse);
     });
+  });
+
+  group('hands-free', () {
+    testWidgets('keeps the screen on only while presenting', (tester) async {
+      await tester.pumpWidget(host());
+      expect(presenterHost.keepScreenOn, isTrue);
+      await tester.pumpWidget(const SizedBox());
+      expect(presenterHost.keepScreenOn, isFalse);
+    });
+
+    testWidgets('volume up/down are Prev/Next while captured', (tester) async {
+      await tester.pumpWidget(host());
+      expect(presenterHost.volumeKeysCaptured, isTrue);
+      presenterHost.press(VolumeKey.down);
+      presenterHost.press(VolumeKey.up);
+      expect(sink.events, [
+        const KeyInput(0x4E, 0, down: true), // Page Down = next
+        const KeyInput(0x4E, 0, down: false),
+        const KeyInput(0x4B, 0, down: true), // Page Up = prev
+        const KeyInput(0x4B, 0, down: false),
+      ]);
+    });
+
+    testWidgets('with the setting off, volume keys are left to the system',
+        (tester) async {
+      await tester.pumpWidget(host(volumeKeys: false));
+      expect(presenterHost.volumeKeysCaptured, isFalse);
+      presenterHost.press(VolumeKey.down);
+      expect(sink.events, isEmpty);
+    });
+
+    testWidgets('turning the setting off mid-session releases the keys',
+        (tester) async {
+      await tester.pumpWidget(host());
+      expect(presenterHost.volumeKeysCaptured, isTrue);
+      await tester.pumpWidget(host(volumeKeys: false));
+      expect(presenterHost.volumeKeysCaptured, isFalse);
+      presenterHost.press(VolumeKey.up);
+      expect(sink.events, isEmpty);
+      await tester.pumpWidget(host());
+      expect(presenterHost.volumeKeysCaptured, isTrue);
+    });
+
+    testWidgets('leaving presenter mode gives the volume keys back',
+        (tester) async {
+      await tester.pumpWidget(host());
+      await tester.pumpWidget(const SizedBox());
+      expect(presenterHost.volumeKeysCaptured, isFalse);
+      presenterHost.press(VolumeKey.down);
+      expect(sink.events, isEmpty);
+    });
+
+    testWidgets('backgrounding releases keys and screen; resuming retakes them',
+        (tester) async {
+      await tester.pumpWidget(host());
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      await tester.pump();
+      expect(presenterHost.keepScreenOn, isFalse);
+      expect(presenterHost.volumeKeysCaptured, isFalse);
+
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pump();
+      expect(presenterHost.keepScreenOn, isTrue);
+      expect(presenterHost.volumeKeysCaptured, isTrue);
+      presenterHost.press(VolumeKey.down);
+      expect(sink.events.whereType<KeyInput>(), isNotEmpty);
+    });
+
+    testWidgets('slide buttons and Click tap the phone', (tester) async {
+      final haptics = captureHaptics(tester);
+      await tester.pumpWidget(host());
+      await tester.tap(pad('next'));
+      await tester.tap(pad('prev'));
+      await tester.tap(pad('click'));
+      expect(haptics, everyElement('HapticFeedbackType.lightImpact'));
+      expect(haptics.length, 3);
+    });
+
+    testWidgets('engaging the clutch is felt, releasing is not',
+        (tester) async {
+      final haptics = captureHaptics(tester);
+      await tester.pumpWidget(host());
+      final touch = await tester.startGesture(tester.getCenter(pad('clutch')));
+      await tester.pump();
+      expect(haptics, ['HapticFeedbackType.selectionClick']);
+      await touch.up();
+      await tester.pump();
+      expect(haptics.length, 1);
+    });
+
+    testWidgets('a volume-key slide change is felt too', (tester) async {
+      final haptics = captureHaptics(tester);
+      await tester.pumpWidget(host());
+      presenterHost.press(VolumeKey.down);
+      expect(haptics, ['HapticFeedbackType.lightImpact']);
+    });
+  });
+
+  group('always on: bias', () {
+    testWidgets('a steady gyro bias is learned away, not left to creep',
+        (tester) async {
+      // Always-on keeps the engine engaged; it must still learn the bias.
+      await tester.pumpWidget(host(clutch: false));
+      feed(source, gz: 0.03, ms: 30000);
+      expect(session.engine.gyroBias.z, closeTo(0.03, 0.005));
+      sink.events.clear();
+      feed(source, gz: 0.03, ms: 5000, startMs: 30010);
+      expect(moves(), isEmpty);
+    });
+  });
+
+  group('covered by another screen', () {
+    testWidgets('goes quiet while Settings is on top, and resumes after',
+        (tester) async {
+      await tester.pumpWidget(host(clutch: false, laser: null));
+      expect(session.engine.engaged, isTrue);
+      expect(presenterHost.volumeKeysCaptured, isTrue);
+
+      await tester.pumpWidget(host(clutch: false, active: false));
+      expect(session.engine.engaged, isFalse,
+          reason: 'scrolling a settings list must not move the cursor');
+      expect(presenterHost.volumeKeysCaptured, isFalse);
+      expect(presenterHost.keepScreenOn, isFalse);
+      expect(source.running, isFalse);
+
+      await tester.pumpWidget(host(clutch: false));
+      expect(session.engine.engaged, isTrue);
+      expect(presenterHost.volumeKeysCaptured, isTrue);
+      expect(source.running, isTrue);
+    });
+
+    testWidgets('a held click and the pad are released when covered',
+        (tester) async {
+      await tester.pumpWidget(host());
+      await tester.startGesture(tester.getCenter(pad('click')));
+      await tester.startGesture(tester.getCenter(pad('clutch')));
+      await tester.pump();
+      await tester.pumpWidget(host(active: false));
+      expect(sink.events.last, const ButtonEvent(Button.left, down: false));
+      expect(session.engine.engaged, isFalse);
+    });
+
+    testWidgets('resuming from the background stays quiet if still covered',
+        (tester) async {
+      await tester.pumpWidget(host(active: false));
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pump();
+      expect(source.running, isFalse);
+      expect(presenterHost.volumeKeysCaptured, isFalse);
+    });
+  });
+
+  group('pads and fingers', () {
+    testWidgets('the clutch stays held until the last finger lifts',
+        (tester) async {
+      await tester.pumpWidget(host());
+      final first = await tester.startGesture(tester.getCenter(pad('clutch')));
+      final second = await tester.startGesture(
+          tester.getCenter(pad('clutch')) + const Offset(20, 20));
+      await tester.pump();
+      expect(session.engine.engaged, isTrue);
+      await first.up();
+      await tester.pump();
+      expect(session.engine.engaged, isTrue,
+          reason: 'one finger is still down');
+      await second.up();
+      await tester.pump();
+      expect(session.engine.engaged, isFalse);
+    });
+
+    testWidgets('a second finger does not press Click twice', (tester) async {
+      await tester.pumpWidget(host());
+      final a = await tester.startGesture(tester.getCenter(pad('click')));
+      final b = await tester.startGesture(
+          tester.getCenter(pad('click')) + const Offset(10, 10));
+      await a.up();
+      await b.up();
+      expect(sink.events, [
+        const ButtonEvent(Button.left, down: true),
+        const ButtonEvent(Button.left, down: false),
+      ]);
+    });
+  });
+
+  testWidgets('a transient sensor error clears once samples resume',
+      (tester) async {
+    await tester.pumpWidget(host());
+    source.emitError(Exception('blip'));
+    await tester.pump();
+    expect(find.text('Motion sensors unavailable'), findsOneWidget);
+    feed(source, ms: 50);
+    await tester.pump();
+    expect(find.text('Motion sensors unavailable'), findsNothing);
   });
 
   testWidgets('a sensor error is shown, and the buttons still work',

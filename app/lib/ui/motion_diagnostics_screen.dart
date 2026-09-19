@@ -18,9 +18,11 @@ class MotionDiagnosticsScreen extends StatefulWidget {
       _MotionDiagnosticsScreenState();
 }
 
-class _MotionDiagnosticsScreenState extends State<MotionDiagnosticsScreen> {
+class _MotionDiagnosticsScreenState extends State<MotionDiagnosticsScreen>
+    with WidgetsBindingObserver {
   StreamSubscription<MotionSample>? _samples;
   Timer? _refresh;
+  bool _attached = false;
   MotionSample? _last;
   Duration? _windowStart;
   int _windowCount = 0;
@@ -31,7 +33,34 @@ class _MotionDiagnosticsScreenState extends State<MotionDiagnosticsScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _samples = _session.samples.listen(_onSample);
+    _attach();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _samples?.cancel();
+    _detach();
+    super.dispose();
+  }
+
+  /// A backgrounded app must not keep streaming gyro or repainting; and since
+  /// the sensor feed is reference counted, holding it here would also defeat
+  /// the presenter's own stop-on-pause.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _attach();
+    } else {
+      _detach();
+    }
+  }
+
+  void _attach() {
+    if (_attached) return;
+    _attached = true;
     _session.attach();
     // The sensors run at ~100 Hz; repaint at 10 Hz.
     _refresh = Timer.periodic(
@@ -40,12 +69,12 @@ class _MotionDiagnosticsScreenState extends State<MotionDiagnosticsScreen> {
     );
   }
 
-  @override
-  void dispose() {
+  void _detach() {
+    if (!_attached) return;
+    _attached = false;
     _refresh?.cancel();
-    _samples?.cancel();
+    _refresh = null;
     _session.detach();
-    super.dispose();
   }
 
   /// Measures the delivered sample rate from the sensor timestamps over
@@ -69,10 +98,7 @@ class _MotionDiagnosticsScreenState extends State<MotionDiagnosticsScreen> {
     final engine = _session.engine;
     final s = _last;
     final bias = engine.gyroBias;
-    final still = s != null &&
-        (s.gyroX - bias.x).abs() < engine.config.stillnessRadPerSec &&
-        (s.gyroY - bias.y).abs() < engine.config.stillnessRadPerSec &&
-        (s.gyroZ - bias.z).abs() < engine.config.stillnessRadPerSec;
+    final still = s != null && engine.still;
     final mono = Theme.of(context)
         .textTheme
         .bodyMedium
@@ -122,8 +148,8 @@ class _MotionDiagnosticsScreenState extends State<MotionDiagnosticsScreen> {
           ),
           const Text(
             'Put the phone down or hold it still, then press Recalibrate. '
-            'The bias is also learned automatically whenever the pad is '
-            'released and the phone rests.',
+            'The bias is also learned automatically whenever the phone is '
+            'still — with the pad released, or held while moving.',
           ),
         ],
       ),

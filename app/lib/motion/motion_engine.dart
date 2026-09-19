@@ -66,11 +66,13 @@ class MotionEngine {
   /// horizontal axis is ill-defined; keep the previous one instead.
   static const double _minHorizontalNorm = 0.15;
 
-  /// Until [MotionConfig.biasTau] seconds of bias learning have accrued the
-  /// stillness gate is this wide, so a bias larger than
-  /// [MotionConfig.stillnessRadPerSec] (which would otherwise never look
-  /// "still", and so never be learned) can still be found.
-  static const double _warmupStillnessRadPerSec = 0.15;
+  /// Stillness gate while the clutch is released: the phone is resting, so a
+  /// wide gate is safe and lets a large or drifting bias be found. (Hand
+  /// tremor is zero-mean, so it averages out inside the slow learner.)
+  /// While engaged the tighter [MotionConfig.stillnessRadPerSec] applies, so
+  /// deliberate slow pointing is not mistaken for bias. Neither gate is
+  /// one-shot: a bias that grows later is learned as well.
+  static const double _restingStillnessRadPerSec = 0.15;
 
   /// During [recalibrate] the device is assumed still, so learning is fast;
   /// but a rate above this is obviously not a still device and is skipped.
@@ -86,8 +88,8 @@ class MotionEngine {
 
   // Learned gyro bias (rad/s, device frame).
   double _biasX = 0, _biasY = 0, _biasZ = 0;
-  double _learnedSeconds = 0;
   double _calibrateRemaining = 0;
+  bool _still = false;
 
   // Last horizontal axis perpendicular to the pointing axis (device frame).
   double _rx = 1, _ry = 0, _rz = 0;
@@ -105,6 +107,10 @@ class MotionEngine {
 
   /// Whether a [recalibrate] is still in progress.
   bool get calibrating => _calibrateRemaining > 0;
+
+  /// Whether the phone looked still on the last sample, by the same gate the
+  /// bias learner uses (so a diagnostics readout matches what learning does).
+  bool get still => _still;
 
   /// The gyro zero-offset learned so far (rad/s, device frame).
   ({double x, double y, double z}) get gyroBias =>
@@ -213,7 +219,7 @@ class MotionEngine {
     _engaged = false;
     _hasGravity = false;
     _biasX = _biasY = _biasZ = 0;
-    _learnedSeconds = 0;
+    _still = false;
     _calibrateRemaining = 0;
     _gx = 0;
     _gy = 0;
@@ -232,25 +238,22 @@ class MotionEngine {
     _pitchFilter.reset();
   }
 
-  /// Learns the gyro bias while it is safe to: during a [recalibrate], or
-  /// while the clutch is released and the device is still. Never while
-  /// engaged — slow deliberate pointing would be absorbed as bias.
+  /// Learns the gyro bias whenever the phone is still enough — released or
+  /// engaged, so "always on" mode does not creep either — using a wide gate
+  /// while released and a tight one while engaged, or quickly during a
+  /// [recalibrate].
   void _learnBias(MotionSample s, double dt, double correctedRate) {
-    final calibrating = _calibrateRemaining > 0;
+    _still = correctedRate <
+        (_engaged ? config.stillnessRadPerSec : _restingStillnessRadPerSec);
     final double tau;
-    if (calibrating) {
+    if (_calibrateRemaining > 0) {
       _calibrateRemaining -= dt;
       if (correctedRate > _calibrationMaxRadPerSec) return;
       tau = _calibrationTau;
     } else {
-      if (_engaged) return;
-      final gate = _learnedSeconds < config.biasTau
-          ? _warmupStillnessRadPerSec
-          : config.stillnessRadPerSec;
-      if (correctedRate >= gate) return;
+      if (!_still) return;
       tau = config.biasTau;
     }
-    _learnedSeconds += dt;
     final a = dt / (tau + dt);
     _biasX += (s.gyroX - _biasX) * a;
     _biasY += (s.gyroY - _biasY) * a;
@@ -260,7 +263,9 @@ class MotionEngine {
   /// Ballistics: |ω|^p, normalized so [MotionConfig.ballisticsRefRadPerSec]
   /// has unit gain. Slow motion gets finer, fast motion reaches further.
   double _ballistics(double omega) {
-    final ref = config.ballisticsRefRadPerSec;
+    // A zero or negative reference would turn the curve into NaN, and NaN
+    // throws in truncate(); floor it rather than trust the config.
+    final ref = math.max(config.ballisticsRefRadPerSec, 1e-3);
     return omega.sign *
         ref *
         math.pow(omega.abs() / ref, config.ballisticsExponent);

@@ -4,13 +4,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:helm/motion/one_euro_filter.dart';
 
 /// RMS of a filtered sinusoid (after the transient), relative to the input's.
-double gainAt(OneEuroFilter f, double hz, {double amp = 1.0}) {
-  const dt = 0.01;
+double gainAt(OneEuroFilter f, double hz,
+    {double amp = 1.0, double dt = 0.01}) {
+  final n = (6 / dt).round();
   var inSq = 0.0, outSq = 0.0;
-  for (var i = 0; i < 600; i++) {
+  for (var i = 0; i < n; i++) {
     final x = amp * math.sin(2 * math.pi * hz * i * dt);
     final y = f.filter(x, dt);
-    if (i >= 200) {
+    if (i >= n ~/ 3) {
       inSq += x * x;
       outSq += y * y;
     }
@@ -65,6 +66,17 @@ void main() {
     }
 
     expect(lag(2.0), lessThan(lag(0.0)));
+  });
+
+  test('honours the time step: the same tone is filtered the same at any '
+      'sampling rate', () {
+    // A filter that ignored dt would smooth a 200 Hz stream far harder than a
+    // 50 Hz one. Android sensor timing also jitters, so dt really varies.
+    final at50 = gainAt(make(), 4, amp: 0.2, dt: 0.02);
+    final at100 = gainAt(make(), 4, amp: 0.2, dt: 0.01);
+    final at200 = gainAt(make(), 4, amp: 0.2, dt: 0.005);
+    expect(at50, closeTo(at100, 0.06));
+    expect(at200, closeTo(at100, 0.06));
   });
 
   test('reset forgets its state', () {

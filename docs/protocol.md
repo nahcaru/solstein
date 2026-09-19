@@ -31,7 +31,7 @@ payload:
   PointerAbsolute: u16 x, u16 y  (0–65535 ≙ 0.0–1.0 of the host's desktop)
 ```
 
-Type 8 is reserved for presenter-mode spotlight; 6 and 7 are held for the v1 keyboard work (`MediaTap`, `Text`).
+Type 8 is reserved for absolute pointing by a v2 helper (presenter mode's spotlight, ADR-007/008); 6 and 7 are held for the v1 keyboard work (`MediaTap`, `Text`).
 
 **Invariant: `PointerAbsolute` stays normalized on the wire.** The HID transport quantizes to its descriptor's 0…32767 grid; a helper injecting natively multiplies by its own screen size. Neither resolution belongs in the packet. A helper that cannot position absolutely must drop the packet, never synthesize a relative delta from it (see ADR-007).
 

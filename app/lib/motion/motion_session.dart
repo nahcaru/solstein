@@ -33,6 +33,7 @@ class MotionSession {
   final _errors = StreamController<Object>.broadcast(sync: true);
   StreamSubscription<MotionSample>? _subscription;
   int _users = 0;
+  bool _disposed = false;
 
   /// The shared engine. Callers drive the clutch and click through it and
   /// forward the returned events with [emitAll].
@@ -53,13 +54,17 @@ class MotionSession {
 
   /// Registers a user of the sensors; the first one starts them.
   Future<void> attach() async {
+    if (_disposed) return;
     if (_users++ > 0) return;
-    _subscription = source.samples.listen(_onSample, onError: _errors.add);
+    _subscription = source.samples.listen(_onSample, onError: _onError);
     try {
       await source.start();
     } catch (e) {
-      _errors.add(e);
+      _onError(e);
     }
+    // A detach that landed while start() was still pending has already asked
+    // the source to stop; make sure a slow start cannot outlive it.
+    if (_users == 0) await source.stop();
   }
 
   /// Releases a user; the last one stops the sensors. Nothing may stay held
@@ -86,10 +91,22 @@ class MotionSession {
     _samples.add(s);
   }
 
+  /// Errors can arrive after [dispose] closed the controller — e.g. a start()
+  /// that was still in flight and then failed — so this must not add blindly.
+  void _onError(Object error) {
+    if (!_disposed) _errors.add(error);
+  }
+
+  /// Stops the sensors and releases anything held. Safe to call twice; later
+  /// [attach] calls do nothing.
   Future<void> dispose() async {
+    if (_disposed) return;
+    _disposed = true;
+    release(); // nothing may stay held on the host
     await _subscription?.cancel();
     _subscription = null;
     _users = 0;
+    await source.stop();
     await _samples.close();
     await _errors.close();
   }

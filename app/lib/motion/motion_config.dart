@@ -19,7 +19,7 @@ class MotionConfig {
     this.gravityTau = 0.25,
     this.biasTau = 4.0,
     this.stillnessRadPerSec = 0.05,
-  });
+  }) : assert(ballisticsRefRadPerSec > 0);
 
   /// User speed multiplier (Settings slider).
   final double pointerGain;
