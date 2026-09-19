@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:helm/core/input_event.dart';
 import 'package:helm/core/input_sink.dart';
-import 'package:helm/motion/motion_config.dart';
 import 'package:helm/motion/motion_sample.dart';
+import 'package:helm/motion/motion_session.dart';
 import 'package:helm/ui/presenter_surface.dart';
 
 import 'support/fake_motion_source.dart';
@@ -13,7 +13,7 @@ class RecordingSink implements InputSink {
 
   @override
   Set<Capability> get capabilities =>
-      const {Capability.pointer, Capability.keyboard, Capability.absolutePointer};
+      const {Capability.pointer, Capability.keyboard};
 
   @override
   void send(InputEvent event) => events.add(event);
@@ -47,28 +47,28 @@ void feed(FakeMotionSource source,
 void main() {
   late RecordingSink sink;
   late FakeMotionSource source;
+  late MotionSession session;
 
   setUp(() {
     sink = RecordingSink();
     source = FakeMotionSource();
+    session = MotionSession(source: source, emit: sink.send);
   });
 
-  Widget host({
-    MotionConfig config = const MotionConfig(),
-    bool absoluteSpotlight = true,
-  }) =>
-      MaterialApp(
+  tearDown(() => session.dispose());
+
+  Widget host({bool clutch = true}) => MaterialApp(
         home: Scaffold(
           body: PresenterSurface(
             sink: sink,
-            source: source,
-            config: config,
-            absoluteSpotlight: absoluteSpotlight,
+            session: session,
+            clutch: clutch,
           ),
         ),
       );
 
   Finder pad(String key) => find.byKey(ValueKey(key));
+  Iterable<PointerMove> moves() => sink.events.whereType<PointerMove>();
 
   testWidgets('starts the sensors on mount and stops them on unmount',
       (tester) async {
@@ -78,123 +78,195 @@ void main() {
     expect(source.running, isFalse);
   });
 
-  testWidgets('holding Spotlight points absolutely; releasing resumes gliding',
-      (tester) async {
-    await tester.pumpWidget(host());
-    feed(source, ms: 100); // let the engine learn gravity
-    final touch = await tester.startGesture(tester.getCenter(pad('spotlight')));
-    await tester.pump();
-    expect(sink.events.last, const PointerAbsolute(0.5, 0.5));
+  group('clutch (hold to move)', () {
+    testWidgets('the pointer follows the phone only while the pad is held',
+        (tester) async {
+      await tester.pumpWidget(host());
+      feed(source, ms: 100); // let the engine learn gravity
 
-    feed(source, gz: -0.3, ms: 300, startMs: 110);
-    final absolute = sink.events.whereType<PointerAbsolute>().toList();
-    expect(absolute.last.x, greaterThan(0.5));
+      feed(source, gz: -1.0, ms: 300, startMs: 110);
+      expect(moves(), isEmpty, reason: 'pad not held yet');
 
-    await touch.up();
-    await tester.pump();
-    sink.events.clear();
-    feed(source, gz: -1.0, ms: 300, startMs: 420);
-    expect(sink.events.whereType<PointerAbsolute>(), isEmpty);
-    expect(sink.events.whereType<PointerMove>(), isNotEmpty);
+      final touch = await tester.startGesture(tester.getCenter(pad('clutch')));
+      await tester.pump();
+      feed(source, gz: -1.0, ms: 300, startMs: 420);
+      expect(moves(), isNotEmpty);
+      expect(moves().every((m) => m.dx > 0), isTrue);
+
+      await touch.up();
+      await tester.pump();
+      sink.events.clear();
+      feed(source, gz: -1.0, ms: 500, startMs: 730);
+      expect(moves(), isEmpty, reason: 'released: the cursor freezes');
+    });
+
+    testWidgets('the pad shows when it is engaged', (tester) async {
+      await tester.pumpWidget(host());
+      expect(find.text('Hold to move'), findsOneWidget);
+      final touch = await tester.startGesture(tester.getCenter(pad('clutch')));
+      await tester.pump();
+      expect(find.text('Moving'), findsOneWidget);
+      await touch.up();
+      await tester.pump();
+      expect(find.text('Hold to move'), findsOneWidget);
+    });
+
+    testWidgets('a cancelled press freezes the pointer', (tester) async {
+      await tester.pumpWidget(host());
+      feed(source, ms: 100);
+      final touch = await tester.startGesture(tester.getCenter(pad('clutch')));
+      await tester.pump();
+      await touch.cancel();
+      await tester.pump();
+      sink.events.clear();
+      feed(source, gz: -1.0, ms: 300, startMs: 110);
+      expect(moves(), isEmpty);
+    });
+
+    testWidgets('tapping Click or Next while the pad is up moves nothing',
+        (tester) async {
+      // The whole point of the clutch: the shake of a tap stays out.
+      await tester.pumpWidget(host());
+      feed(source, ms: 100);
+      await tester.tap(pad('click'));
+      feed(source, gz: -2.0, ms: 200, startMs: 110); // the phone jolts
+      await tester.tap(pad('next'));
+      expect(moves(), isEmpty);
+    });
   });
 
-  testWidgets('a cancelled Spotlight press ends the spotlight',
-      (tester) async {
-    await tester.pumpWidget(host());
-    feed(source, ms: 100);
-    final touch = await tester.startGesture(tester.getCenter(pad('spotlight')));
-    await tester.pump();
-    await touch.cancel();
-    await tester.pump();
-    sink.events.clear();
-    feed(source, gz: -1.0, ms: 200, startMs: 110);
-    expect(sink.events.whereType<PointerAbsolute>(), isEmpty);
+  group('always on (clutch setting off)', () {
+    testWidgets('the pointer follows the phone; holding the pad freezes it',
+        (tester) async {
+      await tester.pumpWidget(host(clutch: false));
+      expect(find.text('Moving'), findsOneWidget);
+      feed(source, ms: 100);
+      feed(source, gz: -1.0, ms: 300, startMs: 110);
+      expect(moves(), isNotEmpty);
+
+      final touch = await tester.startGesture(tester.getCenter(pad('clutch')));
+      await tester.pump();
+      expect(find.text('Frozen'), findsOneWidget);
+      sink.events.clear();
+      feed(source, gz: -1.0, ms: 300, startMs: 420);
+      expect(moves(), isEmpty);
+
+      await touch.up();
+      await tester.pump();
+      feed(source, gz: -1.0, ms: 300, startMs: 730);
+      expect(moves(), isNotEmpty);
+    });
+
+    testWidgets('changing the setting mid-session switches the meaning',
+        (tester) async {
+      await tester.pumpWidget(host());
+      feed(source, ms: 100);
+      feed(source, gz: -1.0, ms: 200, startMs: 110);
+      expect(moves(), isEmpty); // clutch mode, pad up
+
+      await tester.pumpWidget(host(clutch: false));
+      feed(source, gz: -1.0, ms: 300, startMs: 320);
+      expect(moves(), isNotEmpty); // always on now
+    });
   });
 
-  testWidgets('without absolute support Spotlight is Precision and never '
-      'emits an absolute position', (tester) async {
-    await tester.pumpWidget(host(absoluteSpotlight: false));
-    expect(find.text('Precision'), findsOneWidget);
-    feed(source, ms: 100);
-    final touch = await tester.startGesture(tester.getCenter(pad('spotlight')));
-    await tester.pump();
-    feed(source, gz: -1.0, ms: 300, startMs: 110);
-    await touch.up();
-    expect(sink.events.whereType<PointerAbsolute>(), isEmpty);
-    expect(sink.events.whereType<PointerMove>(), isNotEmpty);
+  group('buttons', () {
+    testWidgets('Next and Prev tap Page Down and Page Up', (tester) async {
+      await tester.pumpWidget(host());
+      await tester.tap(pad('next'));
+      await tester.tap(pad('prev'));
+      expect(sink.events, [
+        const KeyInput(0x4E, 0, down: true),
+        const KeyInput(0x4E, 0, down: false),
+        const KeyInput(0x4B, 0, down: true),
+        const KeyInput(0x4B, 0, down: false),
+      ]);
+    });
+
+    testWidgets('Next is the widest button', (tester) async {
+      await tester.pumpWidget(host());
+      final next = tester.getSize(pad('next')).width;
+      expect(next, greaterThan(tester.getSize(pad('prev')).width * 1.5));
+      expect(next, greaterThan(tester.getSize(pad('click')).width * 1.5));
+    });
+
+    testWidgets('Click presses on touch-down and releases on touch-up',
+        (tester) async {
+      await tester.pumpWidget(host());
+      final touch = await tester.startGesture(tester.getCenter(pad('click')));
+      expect(sink.events, [const ButtonEvent(Button.left, down: true)]);
+      await touch.up();
+      expect(sink.events.last, const ButtonEvent(Button.left, down: false));
+      expect(sink.events.length, 2);
+    });
   });
 
-  testWidgets('Next and Prev tap Page Down and Page Up', (tester) async {
-    await tester.pumpWidget(host());
-    await tester.tap(pad('next'));
-    await tester.tap(pad('prev'));
-    expect(sink.events, [
-      const KeyInput(0x4E, 0, down: true),
-      const KeyInput(0x4E, 0, down: false),
-      const KeyInput(0x4B, 0, down: true),
-      const KeyInput(0x4B, 0, down: false),
-    ]);
-  });
+  group('lifecycle', () {
+    testWidgets('leaving presenter mode mid-click releases the button once',
+        (tester) async {
+      await tester.pumpWidget(host());
+      await tester.startGesture(tester.getCenter(pad('click')));
+      await tester.pumpWidget(const SizedBox());
+      final releases = sink.events
+          .where((e) => e == const ButtonEvent(Button.left, down: false));
+      expect(releases.length, 1);
+    });
 
-  testWidgets('Click presses on touch-down and releases on touch-up',
-      (tester) async {
-    await tester.pumpWidget(host());
-    final touch = await tester.startGesture(tester.getCenter(pad('click')));
-    expect(sink.events, [const ButtonEvent(Button.left, down: true)]);
-    await touch.up();
-    expect(sink.events.last, const ButtonEvent(Button.left, down: false));
-    expect(sink.events.length, 2);
-  });
+    testWidgets('leaving with the pad held opens the clutch', (tester) async {
+      await tester.pumpWidget(host());
+      await tester.startGesture(tester.getCenter(pad('clutch')));
+      await tester.pump();
+      expect(session.engine.engaged, isTrue);
+      await tester.pumpWidget(const SizedBox());
+      expect(session.engine.engaged, isFalse);
+    });
 
-  testWidgets('leaving presenter mode mid-click releases the button once',
-      (tester) async {
-    await tester.pumpWidget(host());
-    await tester.startGesture(tester.getCenter(pad('click')));
-    await tester.pumpWidget(const SizedBox());
-    final releases = sink.events
-        .where((e) => e == const ButtonEvent(Button.left, down: false));
-    expect(releases.length, 1);
-  });
+    testWidgets('backgrounding mid-click releases it and stops the sensors; '
+        'resuming restarts them', (tester) async {
+      await tester.pumpWidget(host());
+      await tester.startGesture(tester.getCenter(pad('click')));
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      await tester.pump();
+      expect(sink.events.last, const ButtonEvent(Button.left, down: false));
+      expect(source.running, isFalse);
 
-  testWidgets('backgrounding mid-click releases it and stops the sensors; '
-      'resuming restarts them', (tester) async {
-    await tester.pumpWidget(host());
-    await tester.startGesture(tester.getCenter(pad('click')));
-    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
-    await tester.pump();
-    expect(sink.events.last, const ButtonEvent(Button.left, down: false));
-    expect(source.running, isFalse);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pump();
+      expect(source.running, isTrue);
+    });
 
-    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
-    await tester.pump();
-    expect(source.running, isTrue);
-  });
+    testWidgets('after resuming, always-on mode moves again', (tester) async {
+      await tester.pumpWidget(host(clutch: false));
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      await tester.pump();
+      expect(session.engine.engaged, isFalse);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pump();
+      expect(session.engine.engaged, isTrue);
+    });
 
-  testWidgets('a rebuild with an equal config keeps the spotlight going',
-      (tester) async {
-    await tester.pumpWidget(host());
-    feed(source, ms: 100);
-    await tester.startGesture(tester.getCenter(pad('spotlight')));
-    await tester.pump();
-    feed(source, gz: -0.3, ms: 200, startMs: 110);
-    final before = sink.events.whereType<PointerAbsolute>().length;
+    testWidgets('leaving frees the clutch and click even if another screen '
+        'still uses the sensors', (tester) async {
+      await tester.pumpWidget(host());
+      await session.attach(); // e.g. the diagnostics screen
+      await tester.startGesture(tester.getCenter(pad('clutch')));
+      await tester.startGesture(tester.getCenter(pad('click')));
+      await tester.pump();
+      await tester.pumpWidget(const SizedBox());
+      expect(session.engine.engaged, isFalse);
+      expect(sink.events.last, const ButtonEvent(Button.left, down: false));
+      session.detach();
+    });
 
-    await tester.pumpWidget(host(config: const MotionConfig())); // new, equal
-    feed(source, gz: -0.3, ms: 200, startMs: 320);
-    expect(sink.events.whereType<PointerAbsolute>().length, greaterThan(before));
-  });
-
-  testWidgets('a changed config aborts the spotlight instead of leaving it '
-      'half-mapped', (tester) async {
-    await tester.pumpWidget(host());
-    feed(source, ms: 100);
-    await tester.startGesture(tester.getCenter(pad('spotlight')));
-    await tester.pump();
-
-    await tester.pumpWidget(host(config: const MotionConfig(pointerGain: 1.5)));
-    sink.events.clear();
-    feed(source, gz: -1.0, ms: 200, startMs: 110);
-    expect(sink.events.whereType<PointerAbsolute>(), isEmpty);
+    testWidgets('the sensors keep running while another screen still uses '
+        'them', (tester) async {
+      await tester.pumpWidget(host());
+      await session.attach(); // e.g. the diagnostics screen
+      await tester.pumpWidget(const SizedBox());
+      expect(source.running, isTrue);
+      session.detach();
+      expect(source.running, isFalse);
+    });
   });
 
   testWidgets('a sensor error is shown, and the buttons still work',

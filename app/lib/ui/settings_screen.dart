@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../app_model.dart';
-import '../core/input_sink.dart';
 import '../hid/shortcut_tables.dart';
+import 'motion_diagnostics_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key, required this.model});
@@ -85,30 +85,38 @@ class SettingsScreen extends StatelessWidget {
               ),
             ),
             ListTile(
-              title: const Text('Spotlight range'),
+              title: const Text('Acceleration'),
               subtitle: Slider(
-                value: model.spotlightFovDegrees,
-                min: 20,
-                max: 80,
-                divisions: 12,
-                label: '${model.spotlightFovDegrees.round()}°',
-                onChanged: model.setSpotlightFov,
+                value: model.motionAccel,
+                min: 1.0,
+                max: 1.8,
+                divisions: 8,
+                label: model.motionAccel.toStringAsFixed(1),
+                onChanged: model.setMotionAccel,
+              ),
+              trailing: const Tooltip(
+                message: 'Higher: slow motion is finer, quick flicks reach '
+                    'further. 1.0 is linear.',
+                child: Icon(Icons.info_outline),
               ),
             ),
             SwitchListTile(
-              title: const Text('Absolute spotlight'),
-              subtitle: Text(
-                model.sink.capabilities.contains(Capability.absolutePointer)
-                    ? 'Point directly at the screen while holding Spotlight. '
-                        'Turn off if this computer ignores it; Spotlight '
-                        'then becomes slow, precise gliding'
-                    : 'Not supported by this connection',
+              title: const Text('Hold to move'),
+              subtitle: const Text(
+                  'The pointer follows the phone only while you hold the pad. '
+                  'Off: it always follows, and holding the pad freezes it'),
+              value: model.motionClutch,
+              onChanged: model.setMotionClutch,
+            ),
+            ListTile(
+              title: const Text('Motion sensors'),
+              subtitle: const Text('Sample rate, gyro bias, recalibrate'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => MotionDiagnosticsScreen(session: model.motion),
+                ),
               ),
-              value: model.absoluteSpotlightEffective,
-              onChanged: model.sink.capabilities
-                      .contains(Capability.absolutePointer)
-                  ? model.setAbsoluteSpotlight
-                  : null,
             ),
           ],
         ),

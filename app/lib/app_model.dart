@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -7,6 +5,7 @@ import 'core/input_sink.dart';
 import 'engine/gesture_config.dart';
 import 'hid/shortcut_tables.dart';
 import 'motion/motion_config.dart';
+import 'motion/motion_session.dart';
 import 'motion/motion_source.dart';
 import 'motion/sensors_motion_source.dart';
 import 'transport/hid_transport.dart';
@@ -16,7 +15,7 @@ import 'transport/hid_transport.dart';
 class AppModel extends ChangeNotifier {
   AppModel({HidTransport? transport, MotionSource? motionSource})
       : _transport = transport ?? HidTransport(),
-        motionSource = motionSource ?? SensorsMotionSource() {
+        _motionSource = motionSource ?? SensorsMotionSource() {
     _transport.state.listen((s) {
       // Navigation follows real state transitions: landing on connected
       // opens the control surface, losing the link falls back to the list.
@@ -30,10 +29,7 @@ class AppModel extends ChangeNotifier {
         _transport.connectedDeviceId().then((id) async {
           connectedDeviceId = id;
           notifyListeners();
-          if (id != null) {
-            await _applyTargetOsForDevice(id);
-            await _applyAbsoluteSpotlightForDevice(id);
-          }
+          if (id != null) await _applyTargetOsForDevice(id);
         });
       } else {
         connectedDeviceId = null;
@@ -64,18 +60,6 @@ class AppModel extends ChangeNotifier {
     }
   }
 
-  /// Whether this host accepts the absolute-pointer report (spotlight
-  /// mapping). Remembered per host: a Mac and a Linux box behind the same
-  /// transport can disagree, so this is a setting, not a capability.
-  Future<void> _applyAbsoluteSpotlightForDevice(String id) async {
-    final prefs = await SharedPreferences.getInstance();
-    final stored = prefs.getBool('$_kAbsoluteSpotlight.$id');
-    if (stored != null && stored != absoluteSpotlight) {
-      absoluteSpotlight = stored;
-      notifyListeners();
-    }
-  }
-
   /// Address of the host currently receiving input; drives the list's
   /// "which one am I controlling" indicator and switch-vs-reopen taps.
   String? connectedDeviceId;
@@ -101,8 +85,16 @@ class AppModel extends ChangeNotifier {
 
   InputSink get sink => _transport;
 
-  /// Gyro + accelerometer feed for presenter mode.
-  final MotionSource motionSource;
+  final MotionSource _motionSource;
+
+  /// Presenter mode's shared engine and sensor feed. One instance for the app
+  /// session, so the learned gyro bias survives leaving and re-entering
+  /// presenter mode, and diagnostics recalibrates the engine doing the pointing.
+  late final MotionSession motion = MotionSession(
+    source: _motionSource,
+    emit: _transport.send,
+    config: motionConfig,
+  );
 
   SinkState sinkState = SinkState.disconnected;
 
@@ -111,21 +103,16 @@ class AppModel extends ChangeNotifier {
   double scrollGain = 1.0;
   bool naturalScroll = true;
 
-  /// Presenter mode: relative-glide speed, spotlight field of view (degrees
-  /// spanning the full screen width), and whether the spotlight maps
-  /// absolutely on the current host.
+  /// Presenter mode: cursor speed, the ballistics exponent (how much faster
+  /// quick motion is than slow motion; 1.0 = linear), and whether the cursor
+  /// follows the phone only while the clutch pad is held.
   double motionGain = 1.0;
-  double spotlightFovDegrees = 40;
-  bool absoluteSpotlight = true;
-
-  /// What the presenter surface should actually do: needs both the user's
-  /// per-host setting and a sink that can accept absolute positions.
-  bool get absoluteSpotlightEffective =>
-      absoluteSpotlight && sink.capabilities.contains(Capability.absolutePointer);
+  double motionAccel = 1.4;
+  bool motionClutch = true;
 
   MotionConfig get motionConfig => MotionConfig(
         pointerGain: motionGain,
-        fieldOfView: spotlightFovDegrees * math.pi / 180,
+        ballisticsExponent: motionAccel,
       );
 
   GestureConfig get gestureConfig => GestureConfig(
@@ -142,8 +129,8 @@ class AppModel extends ChangeNotifier {
   static const _kScrollGain = 'scrollGain';
   static const _kNaturalScroll = 'naturalScroll';
   static const _kMotionGain = 'motionGain';
-  static const _kSpotlightFov = 'spotlightFov';
-  static const _kAbsoluteSpotlight = 'absoluteSpotlight';
+  static const _kMotionAccel = 'motionAccel';
+  static const _kMotionClutch = 'motionClutch';
 
   Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
@@ -156,9 +143,9 @@ class AppModel extends ChangeNotifier {
     naturalScroll = prefs.getBool(_kNaturalScroll) ?? true;
     _transport.naturalScroll = naturalScroll;
     motionGain = (prefs.getDouble(_kMotionGain) ?? 1.0).clamp(0.1, 2.0);
-    spotlightFovDegrees =
-        (prefs.getDouble(_kSpotlightFov) ?? 40).clamp(20.0, 80.0);
-    absoluteSpotlight = prefs.getBool(_kAbsoluteSpotlight) ?? true;
+    motionAccel = (prefs.getDouble(_kMotionAccel) ?? 1.4).clamp(1.0, 1.8);
+    motionClutch = prefs.getBool(_kMotionClutch) ?? true;
+    motion.config = motionConfig;
     notifyListeners();
   }
 
@@ -196,26 +183,25 @@ class AppModel extends ChangeNotifier {
 
   Future<void> setMotionGain(double gain) async {
     motionGain = gain;
+    motion.config = motionConfig;
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setDouble(_kMotionGain, gain);
   }
 
-  Future<void> setSpotlightFov(double degrees) async {
-    spotlightFovDegrees = degrees;
+  Future<void> setMotionAccel(double exponent) async {
+    motionAccel = exponent;
+    motion.config = motionConfig;
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setDouble(_kSpotlightFov, degrees);
+    await prefs.setDouble(_kMotionAccel, exponent);
   }
 
-  Future<void> setAbsoluteSpotlight(bool value) async {
-    absoluteSpotlight = value;
+  Future<void> setMotionClutch(bool value) async {
+    motionClutch = value;
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_kAbsoluteSpotlight, value);
-    // Remember the choice for this host, like the target OS.
-    final id = connectedDeviceId;
-    if (id != null) await prefs.setBool('$_kAbsoluteSpotlight.$id', value);
+    await prefs.setBool(_kMotionClutch, value);
   }
 
   Future<bool> ensurePermissions() => _transport.ensurePermissions();
@@ -233,6 +219,7 @@ class AppModel extends ChangeNotifier {
 
   @override
   void dispose() {
+    motion.dispose();
     _transport.dispose();
     super.dispose();
   }

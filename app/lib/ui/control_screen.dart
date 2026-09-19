@@ -77,9 +77,8 @@ class _ControlScreenState extends State<ControlScreen> {
                   child: _presenterVisible
                       ? PresenterSurface(
                           sink: model.sink,
-                          source: model.motionSource,
-                          config: model.motionConfig,
-                          absoluteSpotlight: model.absoluteSpotlightEffective,
+                          session: model.motion,
+                          clutch: model.motionClutch,
                         )
                       : TrackpadSurface(
                           sink: model.sink,

@@ -5,32 +5,31 @@ import 'package:flutter/material.dart';
 import '../core/input_event.dart';
 import '../core/input_sink.dart';
 import '../hid/keymap_us.dart';
-import '../motion/motion_config.dart';
-import '../motion/motion_engine.dart';
-import '../motion/motion_sample.dart';
-import '../motion/motion_source.dart';
+import '../motion/motion_session.dart';
 
 /// Presenter / laser-pointer mode: phone motion drives the host cursor.
 ///
-/// Glide the phone to move the pointer (relative); hold Spotlight to point
-/// directly (absolute). Prev/Next step slides and Click clicks. Never a
-/// GestureDetector — like the trackpad, presses use raw pointer events.
+/// Like a presentation remote's button, the big pad is a clutch: the cursor
+/// follows the phone only while it is held, so the shake of tapping Click or
+/// Next never reaches the cursor, and an arm at its limit can let go and
+/// re-grip. Prev/Next step slides and Click clicks. Never a GestureDetector —
+/// like the trackpad, presses use raw pointer events.
 class PresenterSurface extends StatefulWidget {
   const PresenterSurface({
     super.key,
     required this.sink,
-    required this.source,
-    required this.config,
-    required this.absoluteSpotlight,
+    required this.session,
+    required this.clutch,
   });
 
   final InputSink sink;
-  final MotionSource source;
-  final MotionConfig config;
 
-  /// Whether a held spotlight maps absolutely. False degrades it to slow
-  /// relative "precision" pointing.
-  final bool absoluteSpotlight;
+  /// The shared engine and sensor feed (see [MotionSession]).
+  final MotionSession session;
+
+  /// True: the cursor moves only while the pad is held. False ("always on"):
+  /// it moves unless the pad is held, which freezes it.
+  final bool clutch;
 
   @override
   State<PresenterSurface> createState() => _PresenterSurfaceState();
@@ -38,41 +37,39 @@ class PresenterSurface extends StatefulWidget {
 
 class _PresenterSurfaceState extends State<PresenterSurface>
     with WidgetsBindingObserver {
-  late MotionEngine _engine = _newEngine();
-  StreamSubscription<MotionSample>? _subscription;
-  bool _spotlightHeld = false;
+  StreamSubscription<Object>? _errors;
+  bool _attached = false;
+  bool _padHeld = false;
   String? _sensorError;
 
-  MotionEngine _newEngine() => MotionEngine(
-        config: widget.config,
-        absoluteSpotlight: widget.absoluteSpotlight,
-      );
+  MotionSession get _session => widget.session;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _startSensors();
+    _errors = _session.errors.listen((_) {
+      if (mounted) setState(() => _sensorError = 'Motion sensors unavailable');
+    });
+    _attach();
   }
 
   @override
   void didUpdateWidget(PresenterSurface oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // MotionConfig has value equality, so a rebuild with an identical config
-    // does not land here and does not discard the learned gyro bias.
-    if (oldWidget.config != widget.config ||
-        oldWidget.absoluteSpotlight != widget.absoluteSpotlight) {
-      _emit(_engine.reset()); // abort in-flight state before swapping
-      _engine = _newEngine();
-      _spotlightHeld = false;
+    if (oldWidget.clutch != widget.clutch) {
+      // The pad changes meaning; whatever the finger is doing, start over.
+      _padHeld = false;
+      _syncClutch();
     }
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _stopSensors();
-    _emit(_engine.reset());
+    _errors?.cancel();
+    _session.release(); // nothing may stay held after this screen is gone
+    _detach();
     super.dispose();
   }
 
@@ -80,49 +77,45 @@ class _PresenterSurfaceState extends State<PresenterSurface>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     switch (state) {
       case AppLifecycleState.resumed:
-        _startSensors();
+        _attach();
       case AppLifecycleState.inactive:
       case AppLifecycleState.hidden:
       case AppLifecycleState.paused:
       case AppLifecycleState.detached:
         // A backgrounded app must not keep streaming gyro (battery) or leave
-        // a spotlight/click held (stuck input). AppModel.releaseAll() covers
-        // the transport; this covers the engine.
-        _emit(_engine.reset());
-        _stopSensors();
-        if (mounted && _spotlightHeld) setState(() => _spotlightHeld = false);
+        // the clutch or a click held (stuck input). AppModel.releaseAll()
+        // covers the transport; this covers the engine.
+        _session.release();
+        _detach();
+        if (mounted && _padHeld) setState(() => _padHeld = false);
     }
   }
 
-  void _startSensors() {
-    if (_subscription != null) return;
-    _subscription = widget.source.samples.listen(
-      (s) => _emit(_engine.handleSample(s)),
-      onError: (Object e) {
-        if (mounted) setState(() => _sensorError = 'Motion sensors unavailable');
-      },
+  void _attach() {
+    if (_attached) return;
+    _attached = true;
+    _session.attach();
+    _syncClutch();
+  }
+
+  void _detach() {
+    if (!_attached) return;
+    _attached = false;
+    _session.detach();
+  }
+
+  /// Brings the engine's clutch in line with the pad and the setting.
+  void _syncClutch() {
+    final moving = widget.clutch ? _padHeld : !_padHeld;
+    _session.emitAll(
+      moving ? _session.engine.engage() : _session.engine.disengage(),
     );
-    widget.source.start().catchError((Object _) {
-      if (mounted) setState(() => _sensorError = 'Motion sensors unavailable');
-    });
   }
 
-  void _stopSensors() {
-    _subscription?.cancel();
-    _subscription = null;
-    widget.source.stop();
-  }
-
-  void _emit(List<InputEvent> events) {
-    for (final event in events) {
-      widget.sink.send(event);
-    }
-  }
-
-  void _setSpotlight(bool held) {
-    if (_spotlightHeld == held) return;
-    setState(() => _spotlightHeld = held);
-    _emit(held ? _engine.beginSpotlight() : _engine.endSpotlight());
+  void _setPad(bool held) {
+    if (_padHeld == held) return;
+    setState(() => _padHeld = held);
+    _syncClutch();
   }
 
   /// Slide keys are plain Page Up / Page Down on every OS and every deck app
@@ -136,22 +129,27 @@ class _PresenterSurfaceState extends State<PresenterSurface>
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final precision = !widget.absoluteSpotlight;
+    final String label;
+    final String hint;
+    if (widget.clutch) {
+      label = _padHeld ? 'Moving' : 'Hold to move';
+      hint = 'Hold, then sweep the phone';
+    } else {
+      label = _padHeld ? 'Frozen' : 'Moving';
+      hint = 'Hold to freeze the pointer';
+    }
     return Column(
       children: [
         Expanded(
           child: _PadButton(
-            key: const ValueKey('spotlight'),
-            icon: Icons.adjust,
-            label: precision ? 'Precision' : 'Spotlight',
-            hint: _sensorError ??
-                (_spotlightHeld
-                    ? 'Pointing…'
-                    : 'Hold to point · sweep the phone to glide'),
+            key: const ValueKey('clutch'),
+            icon: _padHeld == widget.clutch ? Icons.open_with : Icons.adjust,
+            label: label,
+            hint: _sensorError ?? hint,
             color: scheme.surfaceContainerLow,
             activeColor: scheme.primaryContainer,
-            onDown: () => _setSpotlight(true),
-            onUp: () => _setSpotlight(false),
+            onDown: () => _setPad(true),
+            onUp: () => _setPad(false),
           ),
         ),
         const SizedBox(height: 12),
@@ -177,12 +175,15 @@ class _PresenterSurfaceState extends State<PresenterSurface>
                   label: 'Click',
                   color: scheme.surfaceContainerHigh,
                   activeColor: scheme.primaryContainer,
-                  onDown: () => _emit(_engine.click(down: true)),
-                  onUp: () => _emit(_engine.click(down: false)),
+                  onDown: () =>
+                      _session.emitAll(_session.engine.click(down: true)),
+                  onUp: () =>
+                      _session.emitAll(_session.engine.click(down: false)),
                 ),
               ),
               const SizedBox(width: 12),
               Expanded(
+                flex: 2, // Next is the button pressed most, often blind
                 child: _PadButton(
                   key: const ValueKey('next'),
                   icon: Icons.chevron_right,

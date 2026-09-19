@@ -10,9 +10,14 @@ import 'motion_sample.dart';
 import 'motion_source.dart';
 
 class SensorsMotionSource implements MotionSource {
-  /// [samplingPeriod] defaults to ~50 Hz. Raise the rate with
-  /// `SensorInterval.fastestInterval` if the spotlight feels steppy.
-  SensorsMotionSource({this.samplingPeriod = SensorInterval.gameInterval});
+  /// [samplingPeriod] defaults to 100 Hz: hand tremor (4–12 Hz) needs headroom
+  /// over Nyquist to be filtered, and Android 12+ allows up to 200 Hz without
+  /// the HIGH_SAMPLING_RATE_SENSORS permission. Fall back to
+  /// `SensorInterval.gameInterval` (50 Hz) if the Bluetooth link cannot keep
+  /// up with the report rate.
+  SensorsMotionSource({this.samplingPeriod = defaultSamplingPeriod});
+
+  static const defaultSamplingPeriod = Duration(milliseconds: 10);
 
   final Duration samplingPeriod;
 

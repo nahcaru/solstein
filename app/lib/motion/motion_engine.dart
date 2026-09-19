@@ -10,13 +10,19 @@
 ///   pitch = rotation about the horizontal axis → vertical cursor motion
 ///           perpendicular to the pointing axis
 ///
-/// Two mappings:
-///   * gliding (default): angular velocity → relative [PointerMove], with
-///     sub-unit remainder carry so slow sweeps are not truncated to zero.
-///   * spotlight (held): orientation → absolute [PointerAbsolute]. Yaw has
-///     no absolute reference indoors, so it is zeroed on every press and the
-///     pointer lands at dead centre; pitch comes from gravity and cannot
-///     drift.
+/// Like a presentation remote's button, motion is a *virtual clutch*: the
+/// cursor moves only between [engage] and [disengage]. While disengaged the
+/// engine still tracks gravity and learns the gyro bias (the phone is usually
+/// resting in a hand), it just emits nothing.
+///
+/// While engaged, each projected rate goes through
+///   One Euro filter (tremor)  →  deadzone  →  ballistics curve
+///   →  counts per second  →  ×dt with sub-unit remainder carry
+/// and comes out as a relative [PointerMove].
+///
+/// Relative output means there is no wind-up to guard against: the host stops
+/// the cursor at the screen edge and the rotation beyond it is simply lost,
+/// so swinging back responds immediately.
 library;
 
 import 'dart:math' as math;
@@ -24,24 +30,33 @@ import 'dart:math' as math;
 import '../core/input_event.dart';
 import 'motion_config.dart';
 import 'motion_sample.dart';
+import 'one_euro_filter.dart';
 
 class MotionEngine {
-  MotionEngine({
-    this.config = const MotionConfig(),
-    this.absoluteSpotlight = true,
-  });
+  MotionEngine({MotionConfig config = const MotionConfig()})
+      : _config = config,
+        _yawFilter = _newFilter(config),
+        _pitchFilter = _newFilter(config);
 
-  final MotionConfig config;
+  MotionConfig _config;
 
-  /// Whether a held spotlight maps absolutely. When false (sink without
-  /// Capability.absolutePointer, or a host that rejects the report) the
-  /// spotlight degrades to slow relative "precision" pointing and this
-  /// engine never emits [PointerAbsolute].
-  final bool absoluteSpotlight;
+  static OneEuroFilter _newFilter(MotionConfig c) => OneEuroFilter(
+        minCutoffHz: c.smoothingMinCutoffHz,
+        beta: c.smoothingBeta,
+      );
 
-  /// Precision (degraded spotlight) scaling of gain and deadzone.
-  static const double precisionGainScale = 0.35;
-  static const double precisionDeadzoneScale = 0.5;
+  MotionConfig get config => _config;
+
+  /// Swaps the tunables in place. Unlike building a new engine this keeps the
+  /// learned gyro bias and gravity, so dragging a Settings slider does not
+  /// throw away seconds of calibration. Filters and remainders start fresh.
+  set config(MotionConfig value) {
+    if (value == _config) return;
+    _config = value;
+    _yawFilter = _newFilter(value);
+    _pitchFilter = _newFilter(value);
+    _remX = _remY = 0;
+  }
 
   /// Longest dt integrated in one step; a stalled sensor stream must not
   /// produce one enormous jump.
@@ -57,9 +72,13 @@ class MotionEngine {
   /// "still", and so never be learned) can still be found.
   static const double _warmupStillnessRadPerSec = 0.15;
 
-  /// Absolute position changes smaller than this (normalized) are not
-  /// re-sent; ≈1 px on a 1920-wide desktop.
-  static const double _absoluteEpsilon = 0.0005;
+  /// During [recalibrate] the device is assumed still, so learning is fast;
+  /// but a rate above this is obviously not a still device and is skipped.
+  static const double _calibrationTau = 0.3;
+  static const double _calibrationMaxRadPerSec = 0.5;
+
+  OneEuroFilter _yawFilter;
+  OneEuroFilter _pitchFilter;
 
   // Gravity direction in the device frame (accelerometer at rest = up).
   double _gx = 0, _gy = 0, _gz = 1;
@@ -67,37 +86,29 @@ class MotionEngine {
 
   // Learned gyro bias (rad/s, device frame).
   double _biasX = 0, _biasY = 0, _biasZ = 0;
+  double _learnedSeconds = 0;
+  double _calibrateRemaining = 0;
 
   // Last horizontal axis perpendicular to the pointing axis (device frame).
   double _rx = 1, _ry = 0, _rz = 0;
 
-  double _learnedSeconds = 0;
-
   Duration? _lastTimestamp;
 
-  // Relative-mode sub-unit remainders.
+  // Sub-unit remainders carried between samples.
   double _remX = 0, _remY = 0;
 
-  // Complementary-filtered elevation of the pointing axis (radians).
-  double _pitch = 0;
-
-  // Spotlight state.
-  bool _spotlight = false;
-
-  /// Spotlight pressed before gravity was known: the reference pitch (and the
-  /// centring position) is taken from the first sample instead of a
-  /// placeholder, which would teleport the pointer once real data arrived.
-  bool _pendingSpotlightRef = false;
-  double _yaw = 0;
-  double _pitchRef = 0;
-  double? _lastAbsX, _lastAbsY;
-
+  bool _engaged = false;
   bool _clickDown = false;
 
-  bool get spotlightActive => _spotlight;
+  /// Whether the clutch is held (the cursor is following the phone).
+  bool get engaged => _engaged;
 
-  /// Whether [handleSample] currently maps to absolute positions.
-  bool get _absoluteNow => _spotlight && absoluteSpotlight;
+  /// Whether a [recalibrate] is still in progress.
+  bool get calibrating => _calibrateRemaining > 0;
+
+  /// The gyro zero-offset learned so far (rad/s, device frame).
+  ({double x, double y, double z}) get gyroBias =>
+      (x: _biasX, y: _biasY, z: _biasZ);
 
   List<InputEvent> handleSample(MotionSample s) {
     // One bad sensor reading must not poison the integrators (NaN would
@@ -113,21 +124,13 @@ class MotionEngine {
     final last = _lastTimestamp;
     _lastTimestamp = s.timestamp;
 
-    List<InputEvent> seeded = const [];
     if (!_hasGravity) {
       _gx = s.accelX;
       _gy = s.accelY;
       _gz = s.accelZ;
       _hasGravity = true;
-      _pitch = _elevationFromGravity();
-      if (_pendingSpotlightRef) {
-        _pendingSpotlightRef = false;
-        _pitchRef = _pitch;
-        _lastAbsX = _lastAbsY = 0.5;
-        seeded = const [PointerAbsolute(0.5, 0.5)];
-      }
     }
-    if (last == null) return seeded;
+    if (last == null) return const [];
     final dt = ((s.timestamp - last).inMicroseconds / 1e6).clamp(0.0, _maxDt);
     if (dt == 0) return const [];
 
@@ -143,25 +146,14 @@ class MotionEngine {
     uy /= gn;
     uz /= gn;
 
-    // 2. Gyro bias: learn only while genuinely still, then subtract.
+    // 2. Gyro bias.
     var wx = s.gyroX - _biasX;
     var wy = s.gyroY - _biasY;
     var wz = s.gyroZ - _biasZ;
-    final gate = _learnedSeconds < config.biasTau
-        ? _warmupStillnessRadPerSec
-        : config.stillnessRadPerSec;
-    // Never learn while the spotlight is held: deliberate slow pointing
-    // (exactly what precision mode invites) would be absorbed as bias.
-    if (!_spotlight && math.sqrt(wx * wx + wy * wy + wz * wz) < gate) {
-      _learnedSeconds += dt;
-      final ba = dt / (config.biasTau + dt);
-      _biasX += (s.gyroX - _biasX) * ba;
-      _biasY += (s.gyroY - _biasY) * ba;
-      _biasZ += (s.gyroZ - _biasZ) * ba;
-      wx = s.gyroX - _biasX;
-      wy = s.gyroY - _biasY;
-      wz = s.gyroZ - _biasZ;
-    }
+    _learnBias(s, dt, math.sqrt(wx * wx + wy * wy + wz * wz));
+    wx = s.gyroX - _biasX;
+    wy = s.gyroY - _biasY;
+    wz = s.gyroZ - _biasZ;
 
     // 3. Project onto world axes. p = device +Y, so cross(p, up) =
     //    (uz, 0, -ux): the horizontal axis to the pointing axis's right.
@@ -174,44 +166,27 @@ class MotionEngine {
     final yawRate = wx * ux + wy * uy + wz * uz; // + = turning left
     final pitchRate = wx * _rx + wy * _ry + wz * _rz; // + = tip rising
 
-    // 4. Pitch: integrate the gyro, pull toward gravity (complementary).
-    final pa = dt / (config.pitchTau + dt);
-    _pitch += pitchRate * dt;
-    _pitch += (math.asin(uy.clamp(-1.0, 1.0)) - _pitch) * pa;
-
-    return _absoluteNow
-        ? _absoluteStep(yawRate, dt)
-        : _relativeStep(yawRate, pitchRate, dt);
+    if (!_engaged) return const [];
+    return _glide(yawRate, pitchRate, dt);
   }
 
   List<InputEvent> processAll(Iterable<MotionSample> samples) =>
       [for (final s in samples) ...handleSample(s)];
 
-  /// Spotlight pressed: snapshot the reference and, when absolute mapping is
-  /// available, land the pointer at dead centre.
-  List<InputEvent> beginSpotlight() {
-    if (_spotlight) return const [];
-    _spotlight = true;
-    _remX = _remY = 0;
-    _yaw = 0;
-    if (!absoluteSpotlight) return const [];
-    if (!_hasGravity) {
-      _pendingSpotlightRef = true;
-      return const [];
-    }
-    _pitchRef = _pitch;
-    _lastAbsX = 0.5;
-    _lastAbsY = 0.5;
-    return const [PointerAbsolute(0.5, 0.5)];
+  /// Clutch pressed: motion starts moving the cursor. Filter state and
+  /// remainders start fresh so nothing stale carries over from before.
+  List<InputEvent> engage() {
+    if (_engaged) return const [];
+    _engaged = true;
+    _resetGlide();
+    return const [];
   }
 
-  /// Spotlight released: gliding resumes from wherever the pointer is.
-  List<InputEvent> endSpotlight() {
-    if (!_spotlight) return const [];
-    _spotlight = false;
-    _pendingSpotlightRef = false;
-    _remX = _remY = 0;
-    _lastAbsX = _lastAbsY = null;
+  /// Clutch released: the cursor freezes.
+  List<InputEvent> disengage() {
+    if (!_engaged) return const [];
+    _engaged = false;
+    _resetGlide();
     return const [];
   }
 
@@ -222,18 +197,24 @@ class MotionEngine {
     return [ButtonEvent(Button.left, down: down)];
   }
 
+  /// Relearns the gyro zero-offset quickly, assuming the phone is held still
+  /// for [duration]. Watch [calibrating] for completion.
+  void recalibrate({Duration duration = const Duration(seconds: 2)}) {
+    _calibrateRemaining = duration.inMicroseconds / 1e6;
+  }
+
   /// Aborts everything in flight: releases a held click and forgets bias,
-  /// gravity and the spotlight reference.
+  /// gravity and the clutch.
   List<InputEvent> reset() {
     final events = <InputEvent>[
       if (_clickDown) const ButtonEvent(Button.left, down: false),
     ];
     _clickDown = false;
-    _spotlight = false;
-    _pendingSpotlightRef = false;
-    _learnedSeconds = 0;
+    _engaged = false;
     _hasGravity = false;
     _biasX = _biasY = _biasZ = 0;
+    _learnedSeconds = 0;
+    _calibrateRemaining = 0;
     _gx = 0;
     _gy = 0;
     _gz = 1;
@@ -241,30 +222,59 @@ class MotionEngine {
     _ry = 0;
     _rz = 0;
     _lastTimestamp = null;
-    _remX = _remY = 0;
-    _yaw = 0;
-    _pitch = 0;
-    _pitchRef = 0;
-    _lastAbsX = _lastAbsY = null;
+    _resetGlide();
     return events;
   }
 
-  double _elevationFromGravity() {
-    final n = math.sqrt(_gx * _gx + _gy * _gy + _gz * _gz);
-    return n < 1e-6 ? 0 : math.asin((_gy / n).clamp(-1.0, 1.0));
+  void _resetGlide() {
+    _remX = _remY = 0;
+    _yawFilter.reset();
+    _pitchFilter.reset();
   }
 
-  List<InputEvent> _relativeStep(double yawRate, double pitchRate, double dt) {
-    final precision = _spotlight; // degraded spotlight
-    final gain = config.pointerGain * (precision ? precisionGainScale : 1.0);
-    final deadzone =
-        config.deadzoneRadPerSec * (precision ? precisionDeadzoneScale : 1.0);
-    final k = config.countsPerRadian * gain;
-    // Sweep right → yawRate < 0 → cursor right; tip up → cursor up (−y).
-    var vx = yawRate.abs() < deadzone ? 0.0 : -yawRate * dt * k;
-    var vy = pitchRate.abs() < deadzone ? 0.0 : -pitchRate * dt * k;
-    _remX += vx;
-    _remY += vy;
+  /// Learns the gyro bias while it is safe to: during a [recalibrate], or
+  /// while the clutch is released and the device is still. Never while
+  /// engaged — slow deliberate pointing would be absorbed as bias.
+  void _learnBias(MotionSample s, double dt, double correctedRate) {
+    final calibrating = _calibrateRemaining > 0;
+    final double tau;
+    if (calibrating) {
+      _calibrateRemaining -= dt;
+      if (correctedRate > _calibrationMaxRadPerSec) return;
+      tau = _calibrationTau;
+    } else {
+      if (_engaged) return;
+      final gate = _learnedSeconds < config.biasTau
+          ? _warmupStillnessRadPerSec
+          : config.stillnessRadPerSec;
+      if (correctedRate >= gate) return;
+      tau = config.biasTau;
+    }
+    _learnedSeconds += dt;
+    final a = dt / (tau + dt);
+    _biasX += (s.gyroX - _biasX) * a;
+    _biasY += (s.gyroY - _biasY) * a;
+    _biasZ += (s.gyroZ - _biasZ) * a;
+  }
+
+  /// Ballistics: |ω|^p, normalized so [MotionConfig.ballisticsRefRadPerSec]
+  /// has unit gain. Slow motion gets finer, fast motion reaches further.
+  double _ballistics(double omega) {
+    final ref = config.ballisticsRefRadPerSec;
+    return omega.sign *
+        ref *
+        math.pow(omega.abs() / ref, config.ballisticsExponent);
+  }
+
+  List<InputEvent> _glide(double yawRate, double pitchRate, double dt) {
+    var yaw = _yawFilter.filter(yawRate, dt);
+    var pitch = _pitchFilter.filter(pitchRate, dt);
+    if (yaw.abs() < config.deadzoneRadPerSec) yaw = 0;
+    if (pitch.abs() < config.deadzoneRadPerSec) pitch = 0;
+    final k = config.countsPerRadian * config.pointerGain;
+    // Sweep right → yaw < 0 → cursor right; tip up → cursor up (−y).
+    _remX += -_ballistics(yaw) * dt * k;
+    _remY += -_ballistics(pitch) * dt * k;
     // Carry only the sub-unit fraction. Whatever exceeds the ±127 report cap
     // is discarded, not banked: a fast flick would otherwise keep the cursor
     // sliding at full speed for seconds after the phone stopped.
@@ -276,28 +286,5 @@ class MotionEngine {
     _remY -= rawY;
     if (outX == 0 && outY == 0) return const [];
     return [PointerMove(outX, outY)];
-  }
-
-  List<InputEvent> _absoluteStep(double yawRate, double dt) {
-    // Clamp the integrator to the screen edges: an unbounded one winds up
-    // past the edge and the pointer stays dead until the user sweeps all the
-    // way back. (Pitch is gravity-anchored, so it needs no such bound.)
-    final half = config.fieldOfView / 2;
-    if (yawRate.abs() >= config.deadzoneRadPerSec) {
-      _yaw = (_yaw + yawRate * dt).clamp(-half, half);
-    }
-    final fovY = config.fieldOfView / config.aspect;
-    final x = (0.5 - _yaw / config.fieldOfView).clamp(0.0, 1.0);
-    final y = (0.5 - (_pitch - _pitchRef) / fovY).clamp(0.0, 1.0);
-    final lx = _lastAbsX, ly = _lastAbsY;
-    if (lx != null &&
-        ly != null &&
-        (x - lx).abs() < _absoluteEpsilon &&
-        (y - ly).abs() < _absoluteEpsilon) {
-      return const [];
-    }
-    _lastAbsX = x;
-    _lastAbsY = y;
-    return [PointerAbsolute(x, y)];
   }
 }
