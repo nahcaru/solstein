@@ -90,9 +90,9 @@ class SettingsScreen extends StatelessWidget {
               subtitle: Slider(
                 value: model.motionAccel,
                 min: 1.0,
-                max: 1.8,
-                divisions: 8,
-                label: model.motionAccel.toStringAsFixed(1),
+                max: 1.6,
+                divisions: 12,
+                label: model.motionAccel.toStringAsFixed(2),
                 onChanged: model.setMotionAccel,
               ),
               trailing: const Tooltip(

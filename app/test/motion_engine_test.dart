@@ -53,10 +53,20 @@ List<MotionSample> wave({
         ),
     ];
 
-/// Smoothing effectively off, so a test sees the ballistics curve alone.
-const rawConfig = MotionConfig(smoothingMinCutoffHz: 1e6, smoothingBeta: 0);
+/// Unit gain at 1 rad/s, so the geometry tests below (direction, roll, gain)
+/// can count on 1 rad/s × 1 s = 2400 counts whatever the shipped curve is.
+const unitConfig = MotionConfig(ballisticsRefRadPerSec: 1.0);
 
-MotionEngine engaged({MotionConfig config = const MotionConfig()}) =>
+/// Smoothing effectively off and the curve pinned to p = 1.4 with unit gain at
+/// 1 rad/s, so a test sees the ballistics math alone.
+const rawConfig = MotionConfig(
+  smoothingMinCutoffHz: 1e6,
+  smoothingBeta: 0,
+  ballisticsExponent: 1.4,
+  ballisticsRefRadPerSec: 1.0,
+);
+
+MotionEngine engaged({MotionConfig config = unitConfig}) =>
     MotionEngine(config: config)..engage();
 
 int sumDx(List<InputEvent> events) =>
@@ -131,7 +141,7 @@ void main() {
     });
 
     test('pointerGain scales the output', () {
-      final events = engaged(config: const MotionConfig(pointerGain: 0.5))
+      final events = engaged(config: unitConfig.copyWith(pointerGain: 0.5))
           .processAll(stream(gz: -1.0, ms: 500));
       expect(sumDx(events), closeTo(600, 3));
     });
@@ -164,7 +174,7 @@ void main() {
     });
 
     test('sub-unit motion accumulates through the remainder carry', () {
-      final events = engaged(config: const MotionConfig(countsPerRadian: 40))
+      final events = engaged(config: unitConfig.copyWith(countsPerRadian: 40))
           .processAll(stream(gz: -1.0, ms: 1000));
       // 0.4 counts per sample: individual events are 1 count, never lost.
       expect(events.every((e) => e is PointerMove && e.dx.abs() <= 1), isTrue);
@@ -346,31 +356,69 @@ void main() {
     });
   });
 
-  group('tremor smoothing', () {
-    // A 9 Hz, ±0.2 rad/s shake is well inside the 4–12 Hz tremor band.
-    final tremor = wave(hz: 9, amp: 0.2, ms: 3000);
+  group('shipped ballistics defaults', () {
+    // Slow pointing (10–30°/s) must feel like a laser: close to 1:1, not half
+    // speed. A curve pivoting at 1 rad/s (57°/s) made it ~0.5×; that was too
+    // slow on a real phone.
+    int perSecond(double omega) => sumDx(
+        engaged(config: const MotionConfig()).processAll(stream(gz: -omega, ms: 1000)));
+    const linear = 2400; // counts per rad at unit gain
 
-    test('a hand tremor is strongly attenuated', () {
-      final smoothed = travel(engaged().processAll(tremor));
-      final raw = travel(engaged(config: rawConfig).processAll(tremor));
-      // Measured: ≈370 counts raw, ≈11 smoothed (3%), across 6–12 Hz.
-      expect(raw, greaterThan(200), reason: 'the tremor must be visible raw');
-      expect(smoothed, lessThan(raw * 0.1));
+    test('slow pointing keeps at least 85% of a linear response', () {
+      for (final omega in [0.15, 0.2, 0.3, 0.4]) {
+        expect(perSecond(omega) / (omega * linear), greaterThan(0.85),
+            reason: '${(omega * 57.3).round()}°/s');
+      }
+    });
+
+    test('fast flicks reach further, but stay controlled', () {
+      final fast = perSecond(3.0) / (3.0 * linear);
+      expect(fast, greaterThan(1.1));
+      expect(fast, lessThan(1.5));
+    });
+
+    test('the response still rises with speed (it is not linear)', () {
+      expect(perSecond(2.0) / 2.0, greaterThan(perSecond(0.2) / 0.2));
+    });
+  });
+
+  group('tremor smoothing', () {
+    // Compared against the very same curve with the filter opened wide, so the
+    // only difference is the smoothing.
+    final noSmoothing =
+        unitConfig.copyWith(smoothingMinCutoffHz: 1e6, smoothingBeta: 0);
+
+    double keptFraction(List<MotionSample> input) {
+      final smoothed = travel(engaged().processAll(input));
+      final raw = travel(engaged(config: noSmoothing).processAll(input));
+      expect(raw, greaterThan(300), reason: 'the motion must be visible raw');
+      return smoothed / raw;
+    }
+
+    test('a 9 Hz hand tremor is strongly attenuated', () {
+      // Measured: ≈8% of the raw movement survives at 9 Hz (≈4% at 12 Hz,
+      // ≈20% at 6 Hz).
+      expect(keptFraction(wave(hz: 9, amp: 0.2, ms: 3000)), lessThan(0.12));
+    });
+
+    test('the higher the tremor frequency, the more is removed', () {
+      expect(keptFraction(wave(hz: 12, amp: 0.2, ms: 3000)),
+          lessThan(keptFraction(wave(hz: 6, amp: 0.2, ms: 3000))));
     });
 
     test('a deliberate slow sweep still gets through', () {
       // 0.5 Hz, ±1 rad/s: a real sweep. Filtering may lag but not eat it.
-      final sweep = wave(hz: 0.5, amp: 1.0, ms: 4000);
-      final smoothed = travel(engaged().processAll(sweep));
-      final raw = travel(engaged(config: rawConfig).processAll(sweep));
-      expect(smoothed, greaterThan(raw * 0.9));
+      expect(keptFraction(wave(hz: 0.5, amp: 1.0, ms: 4000)), greaterThan(0.9));
     });
 
     test('a fast flick follows with little lag', () {
-      // 6 rad/s for 0.3 s: the filter must open up rather than smear it.
-      final fast = engaged().processAll(stream(gz: -6.0, ms: 300));
-      final raw =
-          engaged(config: rawConfig).processAll(stream(gz: -6.0, ms: 300));
+      // 3 rad/s stays under the report cap, so the sums really differ if the
+      // filter smears the start of the motion.
+      final fast = engaged().processAll(stream(gz: -3.0, ms: 300));
+      final raw = engaged(config: noSmoothing).processAll(stream(gz: -3.0, ms: 300));
+      expect(fast.whereType<PointerMove>().every((e) => e.dx.abs() < 127),
+          isTrue,
+          reason: 'must not saturate, or the comparison means nothing');
       expect(sumDx(fast), greaterThan(sumDx(raw) * 0.8));
     });
   });

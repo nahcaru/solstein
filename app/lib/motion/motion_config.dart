@@ -11,8 +11,8 @@ class MotionConfig {
   const MotionConfig({
     this.pointerGain = 1.0,
     this.countsPerRadian = 2400.0,
-    this.ballisticsExponent = 1.4,
-    this.ballisticsRefRadPerSec = 1.0,
+    this.ballisticsExponent = 1.15,
+    this.ballisticsRefRadPerSec = 0.4,
     this.deadzoneRadPerSec = 0.01,
     this.smoothingMinCutoffHz = 1.5,
     this.smoothingBeta = 0.08,
@@ -31,9 +31,15 @@ class MotionConfig {
   /// Ballistics curve exponent p: output rate ∝ |ω|^p, normalized so that
   /// speed [ballisticsRefRadPerSec] keeps a gain of exactly 1. p = 1 is
   /// linear; p > 1 makes slow motion finer and fast motion reach further.
+  /// The default is only mildly above 1: a laser pointer should feel about
+  /// 1:1 at pointing speed, and a strong curve made slow pointing crawl.
   final double ballisticsExponent;
 
   /// Angular speed at which the ballistics curve has unit gain (rad/s).
+  /// Set at ordinary pointing speed (0.4 rad/s ≈ 23°/s), not at a fast
+  /// sweep: below this the gain falls under 1 (fine positioning), above it
+  /// rises. At 1 rad/s a pivot made typical 10–30°/s pointing run at ~half
+  /// speed.
   final double ballisticsRefRadPerSec;
 
   /// Angular rates below this are treated as no motion (kills creep).

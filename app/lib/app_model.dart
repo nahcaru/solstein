@@ -117,7 +117,7 @@ class AppModel extends ChangeNotifier {
   /// quick motion is than slow motion; 1.0 = linear), and whether the cursor
   /// follows the phone only while the clutch pad is held.
   double motionGain = 1.0;
-  double motionAccel = 1.4;
+  double motionAccel = 1.15;
   bool motionClutch = true;
 
   /// Volume up/down act as Prev/Next while presenting.
@@ -161,7 +161,7 @@ class AppModel extends ChangeNotifier {
     naturalScroll = prefs.getBool(_kNaturalScroll) ?? true;
     _transport.naturalScroll = naturalScroll;
     motionGain = (prefs.getDouble(_kMotionGain) ?? 1.0).clamp(0.1, 2.0);
-    motionAccel = (prefs.getDouble(_kMotionAccel) ?? 1.4).clamp(1.0, 1.8);
+    motionAccel = (prefs.getDouble(_kMotionAccel) ?? 1.15).clamp(1.0, 1.6);
     motionClutch = prefs.getBool(_kMotionClutch) ?? true;
     volumeKeys = prefs.getBool(_kVolumeKeys) ?? true;
     final deck = prefs.getInt(_kDeckApp);
