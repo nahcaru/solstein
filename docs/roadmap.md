@@ -24,16 +24,20 @@ Control a Mac with nothing installed on it.
 
 ## v1 — Store-ready
 
-- [ ] Non-US keyboards / CJK (clipboard-paste route candidate)
+- [x] Host layouts: US, JIS (verified on a real JIS Mac) + かな/英数 IME keys
+      — CJK itself already works via the host's IME (see ADR-006). Other
+      layouts (French, German, Thai, Arabic, etc.) deferred by design until
+      someone has a real host to verify against (see ADR-007)
 - [ ] Onboarding, haptics, theming; Play Store release
-- [x] Presenter / laser-pointer mode over HID (ADR-007, ADR-008): gyro pointing with a hold-to-move clutch, ballistics, tremor smoothing, Prev/Next/Click, haptics, volume keys, screen kept on, motion diagnostics. Verified on a Pixel 7a with one host.
+- [x] Presenter / laser-pointer mode over HID (ADR-008, ADR-009): gyro pointing with a hold-to-move clutch, ballistics, tremor smoothing, Prev/Next/Click, haptics, volume keys, screen kept on, motion diagnostics. Verified on a Pixel 7a with one host.
 - [ ] Presenter: verify the Laser button's shortcuts (PowerPoint Ctrl/⌘+L, Google Slides L, Keynote C) in real slideshows; tune the smoothing, ballistics and `countsPerRadian` defaults on a phone; check the other OSes.
-- [ ] Presenter with true absolute pointing. A second Mouse collection in the HID descriptor broke the host's mouse buttons (ADR-007), so this waits for the v2 helper (native injection) unless a Digitizer-based report is proven on real hosts.
+- [ ] Presenter with true absolute pointing. A second Mouse collection in the HID descriptor broke the host's mouse buttons (ADR-008), so this waits for the v2 helper (native injection) unless a Digitizer-based report is proven on real hosts.
 - [ ] Presenter on-screen effects (v2 helper): dimmed spotlight, magnifier and digital laser drawn in an always-on-top overlay (CGEvent/overlay window on macOS, a topmost layer on Windows) — the part of a presentation remote that cannot be done over HID.
 
 ## v2 — Helper (Tier 2)
 
-- [ ] `BleTransport` + Wire Protocol v1 (`docs/protocol.md`)
+- [ ] `BleTransport` + Wire Protocol v1 (`docs/protocol.md`), incl. `Text`
+      packets → native Unicode injection (replaces the clipboard-paste idea)
 - [ ] Flutter desktop helper in `helper/`: macOS (CGEvent + Accessibility onboarding) → Windows (SendInput) → Linux (uinput + udev rule)
 - [ ] Helper-side gesture→action config per OS/DE
 

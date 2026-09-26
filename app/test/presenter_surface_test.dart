@@ -3,7 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:helm/core/input_event.dart';
 import 'package:helm/core/input_sink.dart';
-import 'package:helm/hid/keymap_us.dart';
+import 'package:helm/hid/keymap.dart';
 import 'package:helm/motion/motion_sample.dart';
 import 'package:helm/motion/motion_session.dart';
 import 'package:helm/presenter/presenter_host.dart';
@@ -68,6 +68,7 @@ void main() {
     bool volumeKeys = true,
     KeyStroke? laser,
     bool active = true,
+    bool haptics = true,
   }) =>
       MaterialApp(
         home: Scaffold(
@@ -79,26 +80,35 @@ void main() {
             volumeKeys: volumeKeys,
             laser: laser,
             active: active,
+            hapticsEnabled: haptics,
           ),
         ),
       );
 
-  /// Records HapticFeedback calls made through the platform channel.
+  /// Records the vibrations fired through the `vibration` plugin (the same
+  /// direct-vibrator path the trackpad uses), as their duration in ms. Only
+  /// the duration is checked: off a physical Android/iOS device the plugin
+  /// always reports no amplitude control, so the amplitude is not observable
+  /// here (`fireHaptic`'s amplitude handling is covered in the trackpad tests).
   List<String> captureHaptics(WidgetTester tester) {
     final log = <String>[];
     tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-      SystemChannels.platform,
+      const MethodChannel('vibration'),
       (call) async {
-        if (call.method == 'HapticFeedback.vibrate') {
-          log.add(call.arguments as String);
+        if (call.method == 'vibrate') {
+          log.add('${(call.arguments as Map)['duration']}');
         }
         return null;
       },
     );
     addTearDown(() => tester.binding.defaultBinaryMessenger
-        .setMockMethodCallHandler(SystemChannels.platform, null));
+        .setMockMethodCallHandler(const MethodChannel('vibration'), null));
     return log;
   }
+
+  // The trackpad's own click haptics (hapticForClick): a 12 ms press and a
+  // softer, shorter 8 ms release.
+  const press = '12', release = '8';
 
   Finder pad(String key) => find.byKey(ValueKey(key));
   Iterable<PointerMove> moves() => sink.events.whereType<PointerMove>();
@@ -250,7 +260,8 @@ void main() {
         const KeyInput(0x0F, Mod.lCtrl, down: true), // Ctrl+L
         const KeyInput(0x0F, Mod.lCtrl, down: false),
       ]);
-      expect(haptics, ['HapticFeedbackType.lightImpact']);
+      await tester.pump();
+      expect(haptics, [press]);
     });
 
     testWidgets('does not squeeze Next off the screen', (tester) async {
@@ -395,23 +406,26 @@ void main() {
       expect(sink.events.whereType<KeyInput>(), isNotEmpty);
     });
 
-    testWidgets('slide buttons and Click tap the phone', (tester) async {
+    testWidgets('slide buttons tap the phone; Click presses and releases '
+        'like the trackpad', (tester) async {
       final haptics = captureHaptics(tester);
       await tester.pumpWidget(host());
       await tester.tap(pad('next'));
       await tester.tap(pad('prev'));
-      await tester.tap(pad('click'));
-      expect(haptics, everyElement('HapticFeedbackType.lightImpact'));
-      expect(haptics.length, 3);
+      await tester.pump();
+      expect(haptics, [press, press]);
+      await tester.tap(pad('click')); // down then up
+      await tester.pump();
+      expect(haptics, [press, press, press, release]);
     });
 
-    testWidgets('engaging the clutch is felt, releasing is not',
+    testWidgets('engaging the clutch is felt softly, releasing is not',
         (tester) async {
       final haptics = captureHaptics(tester);
       await tester.pumpWidget(host());
       final touch = await tester.startGesture(tester.getCenter(pad('clutch')));
       await tester.pump();
-      expect(haptics, ['HapticFeedbackType.selectionClick']);
+      expect(haptics, [release]);
       await touch.up();
       await tester.pump();
       expect(haptics.length, 1);
@@ -421,7 +435,24 @@ void main() {
       final haptics = captureHaptics(tester);
       await tester.pumpWidget(host());
       presenterHost.press(VolumeKey.down);
-      expect(haptics, ['HapticFeedbackType.lightImpact']);
+      await tester.pump();
+      expect(haptics, [press]);
+    });
+
+    testWidgets('nothing vibrates when haptics are off in Settings',
+        (tester) async {
+      final haptics = captureHaptics(tester);
+      await tester.pumpWidget(
+          host(haptics: false, laser: const KeyStroke(Mod.none, 0x0F)));
+      await tester.tap(pad('next'));
+      await tester.tap(pad('click'));
+      await tester.tap(pad('laser'));
+      await tester.startGesture(tester.getCenter(pad('clutch')));
+      presenterHost.press(VolumeKey.up);
+      await tester.pump();
+      expect(haptics, isEmpty);
+      // ...and the buttons still work.
+      expect(sink.events.whereType<KeyInput>(), isNotEmpty);
     });
   });
 

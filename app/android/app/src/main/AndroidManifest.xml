@@ -13,6 +13,8 @@
     <uses-permission
         android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Required for HapticFeedback.*Impact() to actually vibrate -->
+    <uses-permission android:name="android.permission.VIBRATE" />
 
     <application
         android:label="helm"

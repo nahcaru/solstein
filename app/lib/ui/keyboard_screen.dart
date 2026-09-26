@@ -2,18 +2,27 @@ import 'package:flutter/material.dart';
 
 import '../core/input_event.dart';
 import '../core/input_sink.dart';
-import '../hid/keymap_us.dart';
+import '../hid/ime_keys.dart';
+import '../hid/keymap.dart';
 import '../hid/shortcut_tables.dart';
 
-/// Keyboard input: a text field that forwards keystrokes (US layout) plus
-/// modifier / navigation / media rows. Modifiers are one-shot (sticky-keys
-/// style): toggle ⌘, tap a key, modifier releases. The modifier lineup and
-/// labels follow the target OS.
+/// Keyboard input: a text field that forwards keystrokes (resolved through
+/// the host's keyboard layout) plus modifier / navigation / media rows.
+/// Modifiers are one-shot (sticky-keys style): toggle ⌘, tap a key, modifier
+/// releases. The modifier lineup and labels follow the target OS.
 class KeyboardScreen extends StatefulWidget {
-  const KeyboardScreen({super.key, required this.sink, required this.targetOs});
+  const KeyboardScreen({
+    super.key,
+    required this.sink,
+    required this.targetOs,
+    required this.hostLayout,
+    required this.showImeKeys,
+  });
 
   final InputSink sink;
   final TargetOs targetOs;
+  final HostLayout hostLayout;
+  final bool showImeKeys;
 
   @override
   State<KeyboardScreen> createState() => _KeyboardScreenState();
@@ -59,11 +68,36 @@ class _KeyboardScreenState extends State<KeyboardScreen> {
     super.dispose();
   }
 
-  void _sendStroke(int usage, int modifiers) {
+  /// Sends a HID keystroke, ORing in any held modifier and then consuming it
+  /// (one-shot: it applies to exactly one key).
+  ///
+  /// [trackedByDiff] must be true only for calls from [_onTextChanged]'s own
+  /// diff loop — that loop tracks the buffer itself and, after the fact,
+  /// decides whether the result can be trusted (see the taint check there).
+  /// Every other caller (nav row, IME keys row) sends a keystroke the buffer
+  /// never accounted for, so by default this resets the buffer immediately:
+  /// the field and the host are about to disagree, and an empty field is
+  /// the one state that's always true to what the host has received.
+  void _sendStroke(int usage, int modifiers, {bool trackedByDiff = false}) {
     final mods = modifiers | _heldModifiers;
     widget.sink.send(KeyInput(usage, mods, down: true));
     widget.sink.send(KeyInput(usage, mods, down: false));
     if (_heldModifiers != 0) setState(() => _heldModifiers = 0);
+    if (!trackedByDiff) _resetBuffer();
+  }
+
+  /// Collapses the buffer to the one state that's always safe: empty holds
+  /// nothing unsent. Used whenever a keystroke reaches the host by a path
+  /// the diff loop doesn't account for, or when the diff loop's own send
+  /// turned out not to be trustworthy (see the taint check in
+  /// [_onTextChanged]) — same remedy as the overflow trim below, reused
+  /// rather than repeated.
+  void _resetBuffer() {
+    _lastText = '';
+    _controller.value = const TextEditingValue(
+      text: '',
+      selection: TextSelection.collapsed(offset: 0),
+    );
   }
 
   void _toggleModifier(int bit) {
@@ -72,6 +106,21 @@ class _KeyboardScreenState extends State<KeyboardScreen> {
 
   /// Diffs the text field against its previous value: removals become
   /// backspaces, additions become keystrokes.
+  ///
+  /// Invariant: the field only ever holds text the host is known to have
+  /// received, character for character, via this diff. Anything that would
+  /// break that gets a full reset ([_resetBuffer]) instead of a best-effort
+  /// patch-up:
+  ///  - a character the host layout cannot produce is refused rather than
+  ///    silently dropped;
+  ///  - a stroke sent while a modifier was held reaches the host as a
+  ///    shortcut, not as the plain key — the loop below detects that
+  ///    ("tainted") and collapses `settled` to empty rather than recording a
+  ///    character the host never actually typed;
+  ///  - a keystroke sent from outside this diff entirely (nav row, IME keys)
+  ///    resets via [_sendStroke]'s own default.
+  /// An empty buffer always satisfies the invariant, which is why every one
+  /// of these lands there instead of trying to reconstruct the real state.
   void _onTextChanged(String text) {
     var common = 0;
     while (common < _lastText.length &&
@@ -79,19 +128,52 @@ class _KeyboardScreenState extends State<KeyboardScreen> {
         _lastText.codeUnitAt(common) == text.codeUnitAt(common)) {
       common++;
     }
+    var tainted = false;
     for (var i = 0; i < _lastText.length - common; i++) {
-      _sendStroke(Usage.backspace, Mod.none);
+      if (_heldModifiers != 0) tainted = true;
+      _sendStroke(Usage.backspace, Mod.none, trackedByDiff: true);
     }
+
+    final accepted = StringBuffer(text.substring(0, common));
+    final refused = <String>[];
     for (final char in text.substring(common).characters) {
-      final stroke = keyStrokeForChar(char);
-      if (stroke != null) _sendStroke(stroke.usage, stroke.modifiers);
+      final stroke = widget.hostLayout.strokeFor(char);
+      if (stroke == null) {
+        refused.add(char);
+        continue;
+      }
+      if (_heldModifiers != 0) tainted = true;
+      _sendStroke(stroke.usage, stroke.modifiers, trackedByDiff: true);
+      accepted.write(char);
     }
-    _lastText = text;
-    // Keep the buffer from growing without bound.
-    if (text.length > 200) {
-      _controller.clear();
-      _lastText = '';
+
+    // Collapse to empty if any stroke above was tainted by a held modifier,
+    // or to keep the buffer from growing without bound.
+    if (tainted || accepted.length > 200) {
+      _resetBuffer();
+    } else {
+      final settled = accepted.toString();
+      _lastText = settled;
+      if (settled != text) {
+        // Programmatic edits do not re-enter onChanged.
+        _controller.value = TextEditingValue(
+          text: settled,
+          selection: TextSelection.collapsed(offset: settled.length),
+        );
+      }
     }
+
+    if (refused.isNotEmpty) _reportRefused(refused);
+  }
+
+  void _reportRefused(List<String> chars) {
+    final unique = chars.toSet().join(' ');
+    final layout = widget.hostLayout.label;
+    ScaffoldMessenger.of(context)
+      ..removeCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        content: Text('$unique isn\'t on the $layout keyboard layout'),
+      ));
   }
 
   Widget _keyRow(List<Widget> keys) => Padding(
@@ -151,6 +233,33 @@ class _KeyboardScreenState extends State<KeyboardScreen> {
           _Key(label: '↓', onTap: () => _sendStroke(Usage.arrowDown, Mod.none)),
           _Key(label: '→', onTap: () => _sendStroke(Usage.arrowRight, Mod.none)),
         ]),
+        if (widget.showImeKeys) ...[
+          const SizedBox(height: 8),
+          Builder(builder: (context) {
+            final keys = imeKeysFor(widget.targetOs);
+            if (keys == null) return const SizedBox.shrink();
+            // Force-unwrapped: safe because `keys` is non-null here, and
+            // ime_keys_test.dart's "a populated table defines both keys"
+            // asserts every populated table in _imeKeyTables has both
+            // ImeKey.kana and ImeKey.eisu. A future table (e.g. Windows,
+            // once verified against hardware) that defines one but not the
+            // other passes that check silently at compile time and NPEs
+            // here at runtime instead of failing the build — keep the test
+            // in sync with any new table.
+            return _keyRow([
+              _Key(
+                label: '英数',
+                onTap: () => _sendStroke(
+                    keys[ImeKey.eisu]!.usage, keys[ImeKey.eisu]!.modifiers),
+              ),
+              _Key(
+                label: 'かな',
+                onTap: () => _sendStroke(
+                    keys[ImeKey.kana]!.usage, keys[ImeKey.kana]!.modifiers),
+              ),
+            ]);
+          }),
+        ],
         if (widget.sink.capabilities.contains(Capability.mediaKeys)) ...[
           const SizedBox(height: 8),
           _keyRow([

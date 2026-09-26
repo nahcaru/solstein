@@ -120,7 +120,19 @@ One bit per media function, in the order listed in the descriptor (bit 0 = Play/
 
 ## Keyboard layout
 
-v0.1: US layout only, per-character char → (modifier, usage) table. CJK/IME is a v1 problem (candidate: clipboard-paste via `Cmd+V`).
+HID transmits key *positions*, not characters: the same usage means different
+characters under different host layouts. `app/lib/hid/layouts.dart` holds one
+table per host layout (US, JIS), selected in Settings independently of target OS.
+
+**CJK works without any of this.** The host's own IME converts romaji sent as
+ordinary usage codes — verified 2026-07-16, Pixel 7a → macOS. The phone's IME is
+deliberately suppressed (`TextInputType.visiblePassword`) so romaji arrives
+unmangled. The かな/英数 keys (LANG1/LANG2 on macOS) toggle the host IME so the
+user need not touch the host.
+
+Characters no host layout can produce (é, €) wait for the v2 helper's `Text`
+packet; see ADR-006. Clipboard-paste was never possible here — nothing in HID
+lets a peripheral write the host's clipboard.
 
 ## Gotchas
 

@@ -1,14 +1,15 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'package:vibration/vibration.dart';
 
 import '../core/input_event.dart';
 import '../core/input_sink.dart';
-import '../hid/keymap_us.dart';
+import '../hid/keymap.dart';
 import '../motion/motion_sample.dart';
 import '../motion/motion_session.dart';
 import '../presenter/presenter_host.dart';
+import 'trackpad_surface.dart' show ClickHaptic, fireHaptic, hapticForClick;
 
 /// Presenter / laser-pointer mode: phone motion drives the host cursor.
 ///
@@ -27,6 +28,7 @@ class PresenterSurface extends StatefulWidget {
     required this.volumeKeys,
     this.laser,
     this.active = true,
+    this.hapticsEnabled = true,
   });
 
   final InputSink sink;
@@ -45,6 +47,11 @@ class PresenterSurface extends StatefulWidget {
   /// the host cursor, hold the volume keys and keep the sensors running while
   /// the user scrolls a settings list.
   final bool active;
+
+  /// Vibrate on button presses, like the trackpad (Settings › Haptics on
+  /// click). Uses the same direct vibrator path, which — unlike Flutter's
+  /// HapticFeedback — does not depend on the system touch-feedback toggle.
+  final bool hapticsEnabled;
 
   /// Keystroke that toggles the slideshow app's built-in laser pointer;
   /// null hides the Laser button.
@@ -66,8 +73,22 @@ class _PresenterSurfaceState extends State<PresenterSurface>
   bool _attached = false;
   bool _padHeld = false;
   String? _sensorError;
+  late final Future<bool> _amplitudeSupported = Vibration.hasAmplitudeControl();
 
   MotionSession get _session => widget.session;
+
+  /// A press-strength tap for buttons; the softer release-strength one when
+  /// the clutch closes.
+  static final _tap = hapticForClick(Button.left, down: true);
+  static final _soft = hapticForClick(Button.left, down: false);
+
+  void _buzz(ClickHaptic haptic) {
+    if (!widget.hapticsEnabled) return;
+    _amplitudeSupported
+        .then((supported) =>
+            fireHaptic(haptic, amplitudeSupported: supported))
+        .catchError((_) {});
+  }
 
   @override
   void initState() {
@@ -160,7 +181,7 @@ class _PresenterSurfaceState extends State<PresenterSurface>
     widget.host.setVolumeKeysCaptured(widget.volumeKeys);
     if (!widget.volumeKeys) return;
     _volumeKeySub = widget.host.volumeKeys.listen((key) {
-      HapticFeedback.lightImpact();
+      _buzz(_tap);
       _tapKey(key == VolumeKey.up ? Usage.pageUp : Usage.pageDown);
     });
   }
@@ -175,7 +196,7 @@ class _PresenterSurfaceState extends State<PresenterSurface>
 
   void _setPad(bool held) {
     if (_padHeld == held) return;
-    if (held) HapticFeedback.selectionClick();
+    if (held) _buzz(_soft);
     setState(() => _padHeld = held);
     _syncClutch();
   }
@@ -227,7 +248,7 @@ class _PresenterSurfaceState extends State<PresenterSurface>
                   color: scheme.surfaceContainerHigh,
                   activeColor: scheme.primaryContainer,
                   onDown: () {
-                    HapticFeedback.lightImpact();
+                    _buzz(_tap);
                     _tapKey(Usage.pageUp);
                   },
                 ),
@@ -241,11 +262,13 @@ class _PresenterSurfaceState extends State<PresenterSurface>
                   color: scheme.surfaceContainerHigh,
                   activeColor: scheme.primaryContainer,
                   onDown: () {
-                    HapticFeedback.lightImpact();
+                    _buzz(_tap);
                     _session.emitAll(_session.engine.click(down: true));
                   },
-                  onUp: () =>
-                      _session.emitAll(_session.engine.click(down: false)),
+                  onUp: () {
+                    _buzz(_soft);
+                    _session.emitAll(_session.engine.click(down: false));
+                  },
                 ),
               ),
               if (widget.laser case final laser?) ...[
@@ -258,7 +281,7 @@ class _PresenterSurfaceState extends State<PresenterSurface>
                     color: scheme.surfaceContainerHigh,
                     activeColor: scheme.primaryContainer,
                     onDown: () {
-                      HapticFeedback.lightImpact();
+                      _buzz(_tap);
                       _tapKey(laser.usage, modifiers: laser.modifiers);
                     },
                   ),
@@ -274,7 +297,7 @@ class _PresenterSurfaceState extends State<PresenterSurface>
                   color: scheme.surfaceContainerHigh,
                   activeColor: scheme.primaryContainer,
                   onDown: () {
-                    HapticFeedback.lightImpact();
+                    _buzz(_tap);
                     _tapKey(Usage.pageDown);
                   },
                 ),

@@ -91,15 +91,22 @@ class _ControlScreenState extends State<ControlScreen> {
                           volumeKeys: model.volumeKeys,
                           laser: model.laserStroke,
                           active: !_covered,
+                          hapticsEnabled: model.hapticsEnabled,
                         )
                       : TrackpadSurface(
                           sink: model.sink,
                           config: model.gestureConfig,
+                          hapticsEnabled: model.hapticsEnabled,
                         ),
                 ),
               ),
             if (_keyboardVisible && capabilities.contains(Capability.keyboard))
-              KeyboardScreen(sink: model.sink, targetOs: model.targetOs),
+              KeyboardScreen(
+                sink: model.sink,
+                targetOs: model.targetOs,
+                hostLayout: model.hostLayout,
+                showImeKeys: model.showImeKeys,
+              ),
           ],
         ),
       ),

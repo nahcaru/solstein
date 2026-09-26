@@ -3,8 +3,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'core/input_sink.dart';
 import 'engine/gesture_config.dart';
-import 'hid/keymap_us.dart' show KeyStroke;
+import 'hid/keymap.dart';
 import 'hid/laser_shortcuts.dart';
+import 'hid/layouts.dart';
 import 'hid/shortcut_tables.dart';
 import 'motion/motion_config.dart';
 import 'motion/motion_session.dart';
@@ -36,7 +37,10 @@ class AppModel extends ChangeNotifier {
         _transport.connectedDeviceId().then((id) async {
           connectedDeviceId = id;
           notifyListeners();
-          if (id != null) await _applyTargetOsForDevice(id);
+          if (id != null) {
+            await _applyTargetOsForDevice(id);
+            await _applyHostLayoutForDevice(id);
+          }
         });
       } else {
         connectedDeviceId = null;
@@ -63,6 +67,19 @@ class AppModel extends ChangeNotifier {
     }
     if (os != null && os != targetOs) {
       _transport.targetOs = os;
+      notifyListeners();
+    }
+  }
+
+  /// Applies this host's remembered layout, if it has one. No guess exists
+  /// for layout the way [guessTargetOs] guesses the OS from a device name.
+  Future<void> _applyHostLayoutForDevice(String id) async {
+    final prefs = await SharedPreferences.getInstance();
+    final stored = prefs.getInt('$_kHostLayout.$id');
+    if (stored == null) return;
+    final layout = _layoutFromIndex(stored);
+    if (layout != _hostLayoutId) {
+      _hostLayoutId = layout;
       notifyListeners();
     }
   }
@@ -113,6 +130,20 @@ class AppModel extends ChangeNotifier {
   double scrollGain = 1.0;
   bool naturalScroll = true;
 
+  /// Whether to show the かな / 英数 keys. Off by default — they mean nothing
+  /// to users who don't run a host IME. Deliberately not tied to the host
+  /// layout: running the Japanese IME on a US-layout Mac is common.
+  bool showImeKeys = false;
+
+  /// Haptic feedback on trackpad clicks. On by default.
+  bool hapticsEnabled = true;
+
+  /// The host's physical keyboard layout. Independent of [targetOs] — a Mac
+  /// can be JIS, a Linux box AZERTY.
+  HostLayoutId _hostLayoutId = HostLayoutId.us;
+
+  HostLayout get hostLayout => hostLayouts[_hostLayoutId]!;
+
   /// Presenter mode: cursor speed, the ballistics exponent (how much faster
   /// quick motion is than slow motion; 1.0 = linear), and whether the cursor
   /// follows the phone only while the clutch pad is held.
@@ -144,6 +175,15 @@ class AppModel extends ChangeNotifier {
   static const _kPointerGain = 'pointerGain';
   static const _kScrollGain = 'scrollGain';
   static const _kNaturalScroll = 'naturalScroll';
+  static const _kHostLayout = 'hostLayout';
+  static const _kShowImeKeys = 'showImeKeys';
+  static const _kHapticsEnabled = 'hapticsEnabled';
+
+  static HostLayoutId _layoutFromIndex(int? index) =>
+      (index != null && index >= 0 && index < HostLayoutId.values.length)
+          ? HostLayoutId.values[index]
+          : HostLayoutId.us;
+
   static const _kMotionGain = 'motionGain';
   static const _kMotionAccel = 'motionAccel';
   static const _kMotionClutch = 'motionClutch';
@@ -160,6 +200,10 @@ class AppModel extends ChangeNotifier {
     scrollGain = (prefs.getDouble(_kScrollGain) ?? 1.0).clamp(0.1, 2.0);
     naturalScroll = prefs.getBool(_kNaturalScroll) ?? true;
     _transport.naturalScroll = naturalScroll;
+    _hostLayoutId = _layoutFromIndex(prefs.getInt(_kHostLayout));
+    showImeKeys = prefs.getBool(_kShowImeKeys) ?? false;
+    hapticsEnabled = prefs.getBool(_kHapticsEnabled) ?? true;
+
     motionGain = (prefs.getDouble(_kMotionGain) ?? 1.0).clamp(0.1, 2.0);
     motionAccel = (prefs.getDouble(_kMotionAccel) ?? 1.15).clamp(1.0, 1.6);
     motionClutch = prefs.getBool(_kMotionClutch) ?? true;
@@ -182,6 +226,17 @@ class AppModel extends ChangeNotifier {
     if (id != null) await prefs.setInt('$_kTargetOs.$id', os.index);
   }
 
+  Future<void> setHostLayout(HostLayoutId id) async {
+    _hostLayoutId = id;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_kHostLayout, id.index);
+    final deviceId = connectedDeviceId;
+    if (deviceId != null) {
+      await prefs.setInt('$_kHostLayout.$deviceId', id.index);
+    }
+  }
+
   Future<void> setPointerGain(double gain) async {
     pointerGain = gain;
     notifyListeners();
@@ -202,6 +257,20 @@ class AppModel extends ChangeNotifier {
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_kNaturalScroll, value);
+  }
+
+  Future<void> setShowImeKeys(bool value) async {
+    showImeKeys = value;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kShowImeKeys, value);
+  }
+
+  Future<void> setHapticsEnabled(bool value) async {
+    hapticsEnabled = value;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kHapticsEnabled, value);
   }
 
   Future<void> setMotionGain(double gain) async {
@@ -243,7 +312,7 @@ class AppModel extends ChangeNotifier {
 
   /// The Laser button's keystroke for the current app and computer, or null
   /// when that app has none there (the button is then hidden).
-  KeyStroke? get laserStroke => laserShortcut(deckApp, targetOs);
+  KeyStroke? get laserStroke => laserShortcut(deckApp, targetOs, hostLayout);
 
   Future<bool> ensurePermissions() => _transport.ensurePermissions();
 

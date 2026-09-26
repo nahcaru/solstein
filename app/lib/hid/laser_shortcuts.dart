@@ -11,7 +11,7 @@
 /// test) where one is wrong.
 library;
 
-import 'keymap_us.dart';
+import 'keymap.dart';
 import 'shortcut_tables.dart';
 
 enum DeckApp {
@@ -25,12 +25,15 @@ enum DeckApp {
 
 /// The keystroke that toggles [app]'s laser pointer on [os], or null when the
 /// app has none there (Keynote runs only on macOS, PowerPoint not on Linux).
+/// The letter comes from the host's [layout], since the apps react to the
+/// character the key produces.
 ///
 /// Keynote also needs Preferences › Slideshow › "Show pointer when the mouse
 /// moves" turned on for the pointer to appear.
-KeyStroke? laserShortcut(DeckApp app, TargetOs os) {
-  final l = keyStrokeForChar('l')!;
-  final c = keyStrokeForChar('c')!;
+KeyStroke? laserShortcut(DeckApp app, TargetOs os, HostLayout layout) {
+  final l = layout.strokeFor('l');
+  final c = layout.strokeFor('c');
+  if (l == null || c == null) return null;
   return switch ((app, os)) {
     (DeckApp.powerpoint, TargetOs.windows) => KeyStroke(Mod.lCtrl, l.usage),
     (DeckApp.powerpoint, TargetOs.macos) => KeyStroke(Mod.lGui, l.usage),

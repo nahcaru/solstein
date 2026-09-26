@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../app_model.dart';
+import '../hid/ime_keys.dart';
+import '../hid/keymap.dart';
 import '../hid/laser_shortcuts.dart';
+import '../hid/layouts.dart';
 import '../hid/shortcut_tables.dart';
 import 'motion_diagnostics_screen.dart';
 
@@ -41,6 +44,25 @@ class SettingsScreen extends StatelessWidget {
             ),
             const Divider(),
             ListTile(
+              title: const Text('Computer\'s keyboard layout'),
+              subtitle: const Text(
+                  'Which physical keyboard the computer thinks is attached'),
+              trailing: DropdownButton<HostLayoutId>(
+                value: model.hostLayout.id,
+                onChanged: (id) {
+                  if (id != null) model.setHostLayout(id);
+                },
+                items: [
+                  for (final layout in hostLayouts.values)
+                    DropdownMenuItem(
+                      value: layout.id,
+                      child: Text(layout.label),
+                    ),
+                ],
+              ),
+            ),
+            const Divider(),
+            ListTile(
               title: const Text('Pointer speed'),
               subtitle: Slider(
                 value: model.pointerGain,
@@ -69,6 +91,21 @@ class SettingsScreen extends StatelessWidget {
               value: model.naturalScroll,
               onChanged: model.setNaturalScroll,
             ),
+            SwitchListTile(
+              title: const Text('Haptics on click'),
+              subtitle: const Text('Vibrate on tap, right, and middle click'),
+              value: model.hapticsEnabled,
+              onChanged: model.setHapticsEnabled,
+            ),
+            if (imeKeysFor(model.targetOs) != null)
+              SwitchListTile(
+                title: const Text('Show IME keys (かな / 英数)'),
+                subtitle: const Text(
+                    'Toggle the computer\'s own IME. Type romaji and the '
+                    'computer converts it — keep your phone keyboard in English'),
+                value: model.showImeKeys,
+                onChanged: model.setShowImeKeys,
+              ),
             const Divider(),
             const ListTile(
               title: Text('Presenter'),
