@@ -150,7 +150,12 @@ class HidTransport implements InputSink {
         _scheduleFlush();
       case ButtonEvent(:final button, :final down):
         if (down) _resetHostModes();
-        _flushMotion(); // preserve ordering: motion before the click edge
+        // Preserve ordering: ALL pending motion before the click edge, not
+        // just one throttled tick's worth — otherwise motion from before
+        // the edge could arrive after it carrying the new button state (a
+        // drag's tail end continuing to move with the button released, or
+        // pre-click hover motion turning a plain click into a drag).
+        _flushAllMotion();
         final bit = switch (button) {
           Button.left => buttonLeftBit,
           Button.right => buttonRightBit,
@@ -251,12 +256,40 @@ class HidTransport implements InputSink {
     _pendingPan -= pan;
     _sendMouse(
         encodeMouseReport(buttons: _buttons, dx: dx, dy: dy, wheel: wheel, pan: pan));
-    // A click-triggered flush restarts the window too: it also sent motion.
     _motionWindow?.cancel();
     _motionWindow = Timer(_motionInterval, () {
       _motionWindow = null;
       _flushMotion();
     });
+  }
+
+  /// Drains ALL pending motion immediately, as however many reports it
+  /// takes (never holding any back) — used only for the button-edge
+  /// ordering guarantee in [send]. This can burst several reports at once,
+  /// but only at a click boundary, which is rare; unlike a continuous
+  /// swipe, it doesn't reintroduce the continuous back-to-back bursting
+  /// ADR-011 fixed. Cancels the throttle window: nothing is left pending
+  /// for it to pick up, and the next motion event opens a fresh one.
+  void _flushAllMotion() {
+    if (_pendingDx == 0 &&
+        _pendingDy == 0 &&
+        _pendingWheel == 0 &&
+        _pendingPan == 0) {
+      return;
+    }
+    final reports = encodeMouseReports(
+      buttons: _buttons,
+      dx: _pendingDx,
+      dy: _pendingDy,
+      wheel: _pendingWheel,
+      pan: _pendingPan,
+    );
+    _pendingDx = _pendingDy = _pendingWheel = _pendingPan = 0;
+    for (final report in reports) {
+      _sendMouse(report);
+    }
+    _motionWindow?.cancel();
+    _motionWindow = null;
   }
 
   Future<void> _sendMouse(Uint8List payload) =>
@@ -273,6 +306,11 @@ class HidTransport implements InputSink {
   Future<void> dispose() async {
     _motionWindow?.cancel();
     _motionWindow = null;
+    // A flush already scheduled via scheduleMicrotask (send() called just
+    // before dispose()) can't be cancelled, but it checks these for zero
+    // before sending anything, so zeroing them here makes that stray flush
+    // a no-op instead of sending one last report after disposal.
+    _pendingDx = _pendingDy = _pendingWheel = _pendingPan = 0;
     await _stateSubscription?.cancel();
     await _state.close();
   }

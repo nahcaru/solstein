@@ -292,7 +292,7 @@ With Bluetooth headphones playing music, moving the pointer broke up the audio. 
 
 ### Decision
 
-- **Throttled coalescing in `HidTransport`.** A single constant, `_motionInterval` = 15 ms (~66 Hz). The first move after idle still flushes on the next microtask, so the first move has no added latency. That flush opens a 15 ms window. Moves and scrolls inside the window accumulate and go out as one report when it closes, and the next window opens only if something was sent. Buttons, keys and media keys are never throttled. A click flushes pending motion ahead of its edge, and `releaseAll()` and `dispose()` cancel the pending window. (Superseded in one respect by ADR-011: a flush now sends at most one report, not a split run of several.)
+- **Throttled coalescing in `HidTransport`.** A single constant, `_motionInterval` = 15 ms (~66 Hz). The first move after idle still flushes on the next microtask, so the first move has no added latency. That flush opens a 15 ms window. Moves and scrolls inside the window accumulate and go out as one report when it closes, and the next window opens only if something was sent. Buttons, keys and media keys are never throttled. A click flushes *all* pending motion ahead of its edge (not just one throttled tick's worth — see ADR-011's second fix), and `releaseAll()` and `dispose()` cancel the pending window. (Superseded in one respect by ADR-011: a throttled flush now sends at most one report, not a split run of several.)
 - **A dedicated send thread in `HidManager`.** All `sendReport` calls are posted to one `HandlerThread` ("helm-hid-send"), which keeps mouse, keyboard and consumer reports in order. `disconnect()`, the host-switch path of `connect()`, and `stop()` post their Bluetooth teardown calls to the same queue, behind the release-all reports, so the releases are sent before the link drops.
 - **QoS stays best-effort.** `registerApp` still passes `null` QoS. Reserving bandwidth with `BluetoothHidDeviceAppQosSettings` would take guaranteed airtime from A2DP, which is the opposite of what we want.
 
@@ -323,9 +323,9 @@ The cause: `_flushMotion()` called `encodeMouseReports`, which splits an accumul
 
 ### Decision
 
-A flush now sends **at most one** report: the pending deltas are clamped to ±127 for that report, and whatever remains subtracted back into the pending accumulators instead of being sent immediately. The already-armed 15 ms window picks up the remainder on its next tick. No distance is lost, an extreme flick just catches up over a couple of extra ticks instead of arriving all at once.
+A *throttled* flush now sends **at most one** report: the pending deltas are clamped to ±127 for that report, and whatever remains subtracted back into the pending accumulators instead of being sent immediately. The already-armed 15 ms window picks up the remainder on its next tick. No distance is lost, an extreme flick just catches up over a couple of extra ticks instead of arriving all at once.
 
-`encodeMouseReports` (the multi-report splitter) is untouched and still covers cases that need to encode an arbitrarily large one-shot delta; `HidTransport` simply stopped being one of its callers.
+`encodeMouseReports` (the multi-report splitter) is still used, but no longer by the throttled path — `_flushMotion()` stopped being one of its callers. It moved to a second, separate method, `_flushAllMotion()`, used only for the button-edge ordering guarantee: a `ButtonEvent` must send *all* pending motion before its edge, not just one throttled tick's worth, or motion from before the edge can arrive after it carrying the new button state — a drag's tail end continuing to move with the button released, or pre-click hover motion turning a plain click into an accidental drag. This was a regression caught by review shortly after this ADR's first version, not by device testing; the burst it can cause only happens at a click boundary (rare), not continuously during a swipe, so it doesn't reintroduce the problem this ADR fixes.
 
 ### Alternatives Considered
 
@@ -334,5 +334,5 @@ A flush now sends **at most one** report: the pending deltas are clamped to ±12
 
 ### Consequences
 
-- Very fast flicks lag the finger by up to a couple of throttle ticks (~30 ms) before the pointer catches up, rather than jumping the full distance in one 15 ms step. Not yet judged on hardware whether this is noticeable in normal use.
-- Still unverified on hardware whether this actually restores (or improves on) the pre-ADR-010 stutter behavior — device testing is the next step.
+- Very fast flicks lag the finger by up to a couple of throttle ticks (~30 ms) before the pointer catches up, rather than jumping the full distance in one 15 ms step. Confirmed on hardware: pointer motion is smoother and Bluetooth audio contention is markedly better than both the pre-ADR-010 baseline and this ADR's first version.
+- A click or drag release with a large backlog queued (a fast flick immediately followed by lifting the finger) can still burst several reports at once via `_flushAllMotion()` — rare enough, and discrete enough, not to matter for audio coexistence.

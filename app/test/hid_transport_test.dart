@@ -175,6 +175,89 @@ void main() {
       },
     );
 
+    test(
+      'a drag release with a large backlog flushes ALL motion — with the '
+      'held button — before the release edge',
+      () {
+        fakeAsync((async) {
+          // Regression: _flushMotion() (one clamped report, remainder
+          // carried forward) broke the click-ordering guarantee once more
+          // than ±127 was queued. The tail of a fast drag used to arrive
+          // AFTER the release, carrying the released (wrong) button state —
+          // the drop would land short and the cursor would keep moving with
+          // no button held.
+          transport.send(const ButtonEvent(Button.left, down: true));
+          transport.send(const PointerMove(1, 0)); // opens the window
+          async.flushMicrotasks();
+          calls.clear();
+
+          // 300 units queued inside the still-open window — needs 3 reports
+          // to drain (127+127+46).
+          transport
+            ..send(const PointerMove(120, 0))
+            ..send(const PointerMove(120, 0))
+            ..send(const PointerMove(60, 0))
+            ..send(const ButtonEvent(Button.left, down: false));
+
+          expect(mouseReports(), [
+            [0x01, 127, 0, 0, 0], // still held: buttons=1 on every drag report
+            [0x01, 127, 0, 0, 0],
+            [0x01, 46, 0, 0, 0],
+            [0x00, 0, 0, 0, 0], // the release edge, strictly last
+          ]);
+
+          // Nothing left pending; the window was cancelled, not rearmed.
+          calls.clear();
+          async.elapse(const Duration(milliseconds: 100));
+          expect(mouseReports(), isEmpty);
+        });
+      },
+    );
+
+    test(
+      'a button press flushes ALL queued pre-press motion with the OLD '
+      'button state first',
+      () {
+        fakeAsync((async) {
+          // The reverse case: hover motion queued before a press must not
+          // attach to the newly-pressed button, which would turn a plain
+          // click into an accidental drag.
+          transport.send(const PointerMove(1, 0)); // opens the window
+          async.flushMicrotasks();
+          calls.clear();
+
+          transport
+            ..send(const PointerMove(150, 0)) // exceeds ±127
+            ..send(const ButtonEvent(Button.left, down: true));
+
+          expect(mouseReports(), [
+            [0x00, 127, 0, 0, 0], // pre-press motion, buttons still 0
+            [0x00, 23, 0, 0, 0],
+            [0x01, 0, 0, 0, 0], // the press edge, strictly last
+          ]);
+        });
+      },
+    );
+
+    test('releaseAll flushes nothing — a large backlog is discarded, not '
+        'sent', () {
+      fakeAsync((async) {
+        transport.send(const PointerMove(1, 0));
+        async.flushMicrotasks();
+        async.elapse(const Duration(milliseconds: 5));
+        transport.send(const PointerMove(300, 0)); // large backlog, queued
+        calls.clear();
+        transport.releaseAll();
+        async.flushMicrotasks();
+        expect(mouseReports(), [
+          [0, 0, 0, 0, 0], // only the release-all report, not the backlog
+        ]);
+        calls.clear();
+        async.elapse(const Duration(milliseconds: 100));
+        expect(mouseReports(), isEmpty); // no stray report for the discarded backlog
+      });
+    });
+
     test('releaseAll cancels the pending window flush', () {
       fakeAsync((async) {
         transport.send(const PointerMove(1, 0));
