@@ -34,17 +34,27 @@ class KeyboardScreen extends StatefulWidget {
 /// the glyph alone can't) or a text [label], never both. [testKey] identifies
 /// the button in widget tests independent of which one it renders as.
 class _ModifierSpec {
-  const _ModifierSpec.icon(this.icon, this.tooltip, this.bit, this.testKey)
-      : label = null;
+  const _ModifierSpec.icon(
+    this.icon,
+    this.tooltip,
+    this.bit,
+    this.testKey, {
+    this.showCaption = false,
+  }) : label = null;
   const _ModifierSpec.label(this.label, this.bit, this.testKey)
       : icon = null,
-        tooltip = null;
+        tooltip = null,
+        showCaption = false;
 
   final String? label;
   final IconData? icon;
   final String? tooltip;
   final int bit;
   final String testKey;
+
+  /// Control/Option/Command print their name below the symbol, the way a
+  /// physical Mac keyboard does — Shift doesn't need the same help.
+  final bool showCaption;
 }
 
 /// Modifier lineup per target OS: native order and naming. Every OS shows the
@@ -53,19 +63,19 @@ class _ModifierSpec {
 /// Super icon exists, and "Alt" reads clearer as text than as a generic icon.
 const Map<TargetOs, List<_ModifierSpec>> _modifierRows = {
   TargetOs.macos: [
-    _ModifierSpec.icon(Icons.keyboard_control_key, 'Control', Mod.lCtrl, 'mod-ctrl'),
-    _ModifierSpec.icon(Icons.keyboard_option_key, 'Option', Mod.lAlt, 'mod-alt'),
-    _ModifierSpec.icon(Icons.keyboard_command_key, 'Command', Mod.lGui, 'mod-gui'),
+    _ModifierSpec.icon(Icons.keyboard_control_key, 'Control', Mod.lCtrl, 'mod-ctrl', showCaption: true),
+    _ModifierSpec.icon(Icons.keyboard_option_key, 'Option', Mod.lAlt, 'mod-alt', showCaption: true),
+    _ModifierSpec.icon(Icons.keyboard_command_key, 'Command', Mod.lGui, 'mod-gui', showCaption: true),
     _ModifierSpec.icon(Symbols.shift, 'Shift', Mod.lShift, 'mod-shift'),
   ],
   TargetOs.windows: [
-    _ModifierSpec.icon(Icons.keyboard_control_key, 'Control', Mod.lCtrl, 'mod-ctrl'),
+    _ModifierSpec.icon(Icons.keyboard_control_key, 'Control', Mod.lCtrl, 'mod-ctrl', showCaption: true),
     _ModifierSpec.label('Win', Mod.lGui, 'mod-gui'),
     _ModifierSpec.label('Alt', Mod.lAlt, 'mod-alt'),
     _ModifierSpec.icon(Symbols.shift, 'Shift', Mod.lShift, 'mod-shift'),
   ],
   TargetOs.linux: [
-    _ModifierSpec.icon(Icons.keyboard_control_key, 'Control', Mod.lCtrl, 'mod-ctrl'),
+    _ModifierSpec.icon(Icons.keyboard_control_key, 'Control', Mod.lCtrl, 'mod-ctrl', showCaption: true),
     _ModifierSpec.label('Super', Mod.lGui, 'mod-gui'),
     _ModifierSpec.label('Alt', Mod.lAlt, 'mod-alt'),
     _ModifierSpec.icon(Symbols.shift, 'Shift', Mod.lShift, 'mod-shift'),
@@ -206,6 +216,7 @@ class _KeyboardScreenState extends State<KeyboardScreen> {
         label: spec.label,
         icon: spec.icon,
         tooltip: spec.tooltip,
+        caption: spec.showCaption ? spec.tooltip : null,
         active: _heldModifiers & spec.bit != 0,
         onTap: () => _toggleModifier(spec.bit),
       );
@@ -366,13 +377,21 @@ class _Key extends StatelessWidget {
     this.label,
     this.icon,
     this.tooltip,
+    this.caption,
     required this.onTap,
     this.active = false,
-  }) : assert(label != null || icon != null);
+  })  : assert(label != null || icon != null),
+        assert(caption == null || icon != null,
+            'caption prints below the icon; it needs one to sit under');
 
   final String? label;
   final IconData? icon;
   final String? tooltip;
+
+  /// A short word printed below the icon, e.g. "Control" under ⌃ — the way a
+  /// physical Mac keyboard prints the name under the symbol. Height stays 44:
+  /// the icon shrinks slightly to leave room for it.
+  final String? caption;
   final VoidCallback onTap;
   final bool active;
 
@@ -380,6 +399,36 @@ class _Key extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final fg = active ? scheme.onPrimaryContainer : scheme.onSurface;
+    final Widget content;
+    if (icon != null && caption != null) {
+      content = Column(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, size: 16, color: fg),
+          const SizedBox(height: 2),
+          Text(
+            caption!,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: 9, color: fg),
+          ),
+        ],
+      );
+    } else if (icon != null) {
+      content = Icon(icon, size: 20, color: fg);
+    } else {
+      content = Text(
+        label!,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          fontSize: label!.length > 2 ? 14 : 18,
+          fontWeight: active ? FontWeight.w600 : FontWeight.w400,
+          color: fg,
+        ),
+      );
+    }
     final key = SizedBox(
       height: 44,
       child: Material(
@@ -388,21 +437,7 @@ class _Key extends StatelessWidget {
         child: InkWell(
           borderRadius: BorderRadius.circular(10),
           onTap: onTap,
-          child: Center(
-            child: icon != null
-                ? Icon(icon, size: 20, color: fg)
-                : Text(
-                    label!,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: label!.length > 2 ? 14 : 18,
-                      fontWeight:
-                          active ? FontWeight.w600 : FontWeight.w400,
-                      color: fg,
-                    ),
-                  ),
-          ),
+          child: Center(child: content),
         ),
       ),
     );
