@@ -111,7 +111,40 @@ void main() {
   const press = '12', release = '8';
 
   Finder pad(String key) => find.byKey(ValueKey(key));
+
+  // The default 800x600 test view is landscape; the horizontal deck needs a
+  // portrait phone.
+  void portrait(WidgetTester tester) {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 3.0;
+    addTearDown(tester.view.reset);
+  }
   Iterable<PointerMove> moves() => sink.events.whereType<PointerMove>();
+
+  testWidgets('portrait puts the deck below the pad', (tester) async {
+    portrait(tester);
+    await tester.pumpWidget(host());
+    expect(tester.getCenter(pad('next')).dy,
+        greaterThan(tester.getCenter(pad('clutch')).dy));
+  });
+
+  testWidgets('landscape puts the deck to the right of the pad',
+      (tester) async {
+    tester.view.physicalSize = const Size(2400, 1080);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(host(laser: const KeyStroke(Mod.none, 0x0F)));
+    final clutch = tester.getCenter(pad('clutch'));
+    for (final key in ['prev', 'click', 'laser', 'next']) {
+      expect(tester.getCenter(pad(key)).dx, greaterThan(clutch.dx),
+          reason: key);
+    }
+    // Stacked top to bottom, with Next still the biggest target.
+    expect(tester.getCenter(pad('prev')).dy,
+        lessThan(tester.getCenter(pad('next')).dy));
+    expect(tester.getSize(pad('next')).height,
+        greaterThan(tester.getSize(pad('prev')).height));
+  });
 
   testWidgets('starts the sensors on mount and stops them on unmount',
       (tester) async {
@@ -227,6 +260,7 @@ void main() {
     });
 
     testWidgets('Next is the widest button', (tester) async {
+      portrait(tester);
       await tester.pumpWidget(host());
       final next = tester.getSize(pad('next')).width;
       expect(next, greaterThan(tester.getSize(pad('prev')).width * 1.5));
@@ -265,6 +299,7 @@ void main() {
     });
 
     testWidgets('does not squeeze Next off the screen', (tester) async {
+      portrait(tester);
       await tester.pumpWidget(host(laser: const KeyStroke(Mod.none, 0x0F)));
       expect(tester.takeException(), isNull);
       expect(tester.getSize(pad('next')).width,

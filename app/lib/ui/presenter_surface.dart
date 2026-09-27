@@ -221,7 +221,67 @@ class _PresenterSurfaceState extends State<PresenterSurface>
       label = _padHeld ? 'Frozen' : 'Moving';
       hint = 'Hold to freeze the pointer';
     }
-    return Column(
+    final landscape =
+        MediaQuery.orientationOf(context) == Orientation.landscape;
+    // Landscape: the deck runs down the right edge, beside the pad.
+    final axis = landscape ? Axis.horizontal : Axis.vertical;
+    final deckAxis = landscape ? Axis.vertical : Axis.horizontal;
+    Widget gap(Axis along) => along == Axis.horizontal
+        ? const SizedBox(width: 12)
+        : const SizedBox(height: 12);
+    final deck = <Widget>[
+      _PadButton(
+        key: const ValueKey('prev'),
+        icon: Icons.chevron_left,
+        label: 'Prev',
+        color: scheme.surfaceContainerHigh,
+        activeColor: scheme.primaryContainer,
+        onDown: () {
+          _buzz(_tap);
+          _tapKey(Usage.pageUp);
+        },
+      ),
+      _PadButton(
+        key: const ValueKey('click'),
+        icon: Icons.mouse,
+        label: 'Click',
+        color: scheme.surfaceContainerHigh,
+        activeColor: scheme.primaryContainer,
+        onDown: () {
+          _buzz(_tap);
+          _session.emitAll(_session.engine.click(down: true));
+        },
+        onUp: () {
+          _buzz(_soft);
+          _session.emitAll(_session.engine.click(down: false));
+        },
+      ),
+      if (widget.laser case final laser?)
+        _PadButton(
+          key: const ValueKey('laser'),
+          icon: Icons.gps_fixed,
+          label: 'Laser',
+          color: scheme.surfaceContainerHigh,
+          activeColor: scheme.primaryContainer,
+          onDown: () {
+            _buzz(_tap);
+            _tapKey(laser.usage, modifiers: laser.modifiers);
+          },
+        ),
+      _PadButton(
+        key: const ValueKey('next'),
+        icon: Icons.chevron_right,
+        label: 'Next',
+        color: scheme.surfaceContainerHigh,
+        activeColor: scheme.primaryContainer,
+        onDown: () {
+          _buzz(_tap);
+          _tapKey(Usage.pageDown);
+        },
+      ),
+    ];
+    return Flex(
+      direction: axis,
       children: [
         Expanded(
           child: _PadButton(
@@ -235,73 +295,21 @@ class _PresenterSurfaceState extends State<PresenterSurface>
             onUp: () => _setPad(false),
           ),
         ),
-        const SizedBox(height: 12),
+        gap(axis),
         SizedBox(
-          height: 96,
-          child: Row(
+          width: landscape ? 120 : null,
+          height: landscape ? null : 96,
+          child: Flex(
+            direction: deckAxis,
             children: [
-              Expanded(
-                child: _PadButton(
-                  key: const ValueKey('prev'),
-                  icon: Icons.chevron_left,
-                  label: 'Prev',
-                  color: scheme.surfaceContainerHigh,
-                  activeColor: scheme.primaryContainer,
-                  onDown: () {
-                    _buzz(_tap);
-                    _tapKey(Usage.pageUp);
-                  },
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _PadButton(
-                  key: const ValueKey('click'),
-                  icon: Icons.mouse,
-                  label: 'Click',
-                  color: scheme.surfaceContainerHigh,
-                  activeColor: scheme.primaryContainer,
-                  onDown: () {
-                    _buzz(_tap);
-                    _session.emitAll(_session.engine.click(down: true));
-                  },
-                  onUp: () {
-                    _buzz(_soft);
-                    _session.emitAll(_session.engine.click(down: false));
-                  },
-                ),
-              ),
-              if (widget.laser case final laser?) ...[
-                const SizedBox(width: 12),
+              for (final (i, button) in deck.indexed) ...[
+                if (i > 0) gap(deckAxis),
                 Expanded(
-                  child: _PadButton(
-                    key: const ValueKey('laser'),
-                    icon: Icons.gps_fixed,
-                    label: 'Laser',
-                    color: scheme.surfaceContainerHigh,
-                    activeColor: scheme.primaryContainer,
-                    onDown: () {
-                      _buzz(_tap);
-                      _tapKey(laser.usage, modifiers: laser.modifiers);
-                    },
-                  ),
+                  // Next is the button pressed most, often blind.
+                  flex: i == deck.length - 1 ? 2 : 1,
+                  child: button,
                 ),
               ],
-              const SizedBox(width: 12),
-              Expanded(
-                flex: 2, // Next is the button pressed most, often blind
-                child: _PadButton(
-                  key: const ValueKey('next'),
-                  icon: Icons.chevron_right,
-                  label: 'Next',
-                  color: scheme.surfaceContainerHigh,
-                  activeColor: scheme.primaryContainer,
-                  onDown: () {
-                    _buzz(_tap);
-                    _tapKey(Usage.pageDown);
-                  },
-                ),
-              ),
             ],
           ),
         ),
@@ -383,10 +391,9 @@ class _PadButtonState extends State<_PadButton> {
               Text(
                 widget.hint!,
                 textAlign: TextAlign.center,
-                style: Theme.of(context)
-                    .textTheme
-                    .bodySmall
-                    ?.copyWith(color: scheme.onSurfaceVariant),
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
               ),
             ],
           ],

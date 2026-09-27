@@ -34,80 +34,155 @@ class _ControlScreenState extends State<ControlScreen> {
     if (mounted) setState(() => _covered = false);
   }
 
+  Widget _backButton(AppModel model) => IconButton(
+        // Back to the device list; the Bluetooth link itself stays up —
+        // connection state is managed from the OS settings, not Helm.
+        icon: const Icon(Icons.arrow_back),
+        tooltip: 'Back to device list',
+        onPressed: model.closeControl,
+      );
+
+  List<Widget> _headerActions(AppModel model, Set<Capability> capabilities) =>
+      [
+        if (capabilities.contains(Capability.pointer))
+          IconButton(
+            icon: Icon(
+              _presenterVisible ? Icons.touch_app : Icons.ads_click,
+            ),
+            tooltip: _presenterVisible ? 'Trackpad' : 'Presenter',
+            onPressed: () =>
+                setState(() => _presenterVisible = !_presenterVisible),
+          ),
+        if (capabilities.contains(Capability.keyboard))
+          IconButton(
+            icon: Icon(
+              _keyboardVisible ? Icons.keyboard_hide : Icons.keyboard,
+            ),
+            tooltip: 'Keyboard',
+            onPressed: () =>
+                setState(() => _keyboardVisible = !_keyboardVisible),
+          ),
+        IconButton(
+          icon: const Icon(Icons.settings),
+          tooltip: 'Settings',
+          onPressed: () => _openSettings(model),
+        ),
+      ];
+
+  Widget _pointerSurface(AppModel model) => Padding(
+        padding: const EdgeInsets.all(12),
+        child: _presenterVisible
+            ? PresenterSurface(
+                sink: model.sink,
+                session: model.motion,
+                host: model.presenterHost,
+                clutch: model.motionClutch,
+                volumeKeys: model.volumeKeys,
+                laser: model.laserStroke,
+                active: !_covered,
+                hapticsEnabled: model.hapticsEnabled,
+              )
+            : TrackpadSurface(
+                sink: model.sink,
+                config: model.gestureConfig,
+                hapticsEnabled: model.hapticsEnabled,
+              ),
+      );
+
+  Widget _keyboard(AppModel model) => KeyboardScreen(
+        sink: model.sink,
+        targetOs: model.targetOs,
+        hostLayout: model.hostLayout,
+        showImeKeys: model.showImeKeys,
+      );
+
   @override
   Widget build(BuildContext context) {
     final model = widget.model;
     final capabilities = model.sink.capabilities;
+    final hasPointer = capabilities.contains(Capability.pointer);
+    final showKeyboard =
+        _keyboardVisible && capabilities.contains(Capability.keyboard);
+
+    if (MediaQuery.orientationOf(context) == Orientation.landscape) {
+      return Scaffold(
+        body: SafeArea(
+          child: Row(
+            children: [
+              _HeaderRail(
+                back: _backButton(model),
+                actions: _headerActions(model, capabilities),
+              ),
+              Expanded(
+                child: ListenableBuilder(
+                  listenable: model,
+                  // The keyboard sits beside the pad: stacked below, it
+                  // would leave no height for either on a landscape screen.
+                  builder: (context, _) => Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (hasPointer)
+                        Expanded(flex: 55, child: _pointerSurface(model)),
+                      if (showKeyboard)
+                        Expanded(
+                          flex: 45,
+                          child: SingleChildScrollView(
+                            child: _keyboard(model),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(
-        // Back to the device list; the Bluetooth link itself stays up —
-        // connection state is managed from the OS settings, not Helm.
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          tooltip: 'Back to device list',
-          onPressed: model.closeControl,
-        ),
+        leading: _backButton(model),
         title: const Text('Helm'),
-        actions: [
-          if (capabilities.contains(Capability.pointer))
-            IconButton(
-              icon: Icon(
-                _presenterVisible ? Icons.touch_app : Icons.ads_click,
-              ),
-              tooltip: _presenterVisible ? 'Trackpad' : 'Presenter',
-              onPressed: () =>
-                  setState(() => _presenterVisible = !_presenterVisible),
-            ),
-          if (capabilities.contains(Capability.keyboard))
-            IconButton(
-              icon: Icon(
-                _keyboardVisible ? Icons.keyboard_hide : Icons.keyboard,
-              ),
-              tooltip: 'Keyboard',
-              onPressed: () =>
-                  setState(() => _keyboardVisible = !_keyboardVisible),
-            ),
-          IconButton(
-            icon: const Icon(Icons.settings),
-            tooltip: 'Settings',
-            onPressed: () => _openSettings(model),
-          ),
-        ],
+        actions: _headerActions(model, capabilities),
       ),
       body: ListenableBuilder(
         listenable: model,
         builder: (context, _) => Column(
           children: [
-            if (capabilities.contains(Capability.pointer))
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: _presenterVisible
-                      ? PresenterSurface(
-                          sink: model.sink,
-                          session: model.motion,
-                          host: model.presenterHost,
-                          clutch: model.motionClutch,
-                          volumeKeys: model.volumeKeys,
-                          laser: model.laserStroke,
-                          active: !_covered,
-                          hapticsEnabled: model.hapticsEnabled,
-                        )
-                      : TrackpadSurface(
-                          sink: model.sink,
-                          config: model.gestureConfig,
-                          hapticsEnabled: model.hapticsEnabled,
-                        ),
-                ),
-              ),
-            if (_keyboardVisible && capabilities.contains(Capability.keyboard))
-              KeyboardScreen(
-                sink: model.sink,
-                targetOs: model.targetOs,
-                hostLayout: model.hostLayout,
-                showImeKeys: model.showImeKeys,
-              ),
+            if (hasPointer) Expanded(child: _pointerSurface(model)),
+            if (showKeyboard) _keyboard(model),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Landscape stand-in for the app bar: the same buttons, stacked down the
+/// left edge so the pad keeps the full screen height.
+class _HeaderRail extends StatelessWidget {
+  const _HeaderRail({required this.back, required this.actions});
+
+  final Widget back;
+  final List<Widget> actions;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Material(
+      color: theme.appBarTheme.backgroundColor ?? theme.colorScheme.surface,
+      child: SizedBox(
+        width: 64,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Column(
+            children: [
+              back,
+              const SizedBox(height: 16),
+              ...actions,
+            ],
+          ),
         ),
       ),
     );
