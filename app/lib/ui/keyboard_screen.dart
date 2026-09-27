@@ -8,7 +8,8 @@ import '../hid/keymap.dart';
 import '../hid/shortcut_tables.dart';
 
 /// Keyboard input: a text field that forwards keystrokes (resolved through
-/// the host's keyboard layout) plus modifier / navigation / media rows.
+/// the host's keyboard layout), a 3×4 grid mixing modifiers in among
+/// navigation keys ([_keyGridRows]), and a media row.
 /// Modifiers are one-shot (sticky-keys style): toggle ⌘, tap a key, modifier
 /// releases. The modifier lineup and labels follow the target OS.
 class KeyboardScreen extends StatefulWidget {
@@ -70,6 +71,16 @@ const Map<TargetOs, List<_ModifierSpec>> _modifierRows = {
     _ModifierSpec.icon(Symbols.shift, 'Shift', Mod.lShift, 'mod-shift'),
   ],
 };
+
+/// The modifier row and the nav/arrow row are no longer separate: this is
+/// three rows of four keys each, mixing modifiers in among navigation keys.
+/// Each entry is a key identifier — 'mod-*' resolves against the current
+/// OS's modifier spec, everything else is a fixed nav/arrow key.
+const List<List<String>> _keyGridRows = [
+  ['nav-esc', 'nav-tab', 'mod-ctrl', 'nav-enter'],
+  ['mod-alt', 'mod-gui', 'nav-up', 'nav-backspace'],
+  ['mod-shift', 'nav-left', 'nav-down', 'nav-right'],
+];
 
 class _KeyboardScreenState extends State<KeyboardScreen> {
   final _controller = TextEditingController();
@@ -190,6 +201,69 @@ class _KeyboardScreenState extends State<KeyboardScreen> {
       ));
   }
 
+  _Key _modifierKey(_ModifierSpec spec) => _Key(
+        key: ValueKey(spec.testKey),
+        label: spec.label,
+        icon: spec.icon,
+        tooltip: spec.tooltip,
+        active: _heldModifiers & spec.bit != 0,
+        onTap: () => _toggleModifier(spec.bit),
+      );
+
+  /// The eight keys that are never modifiers: esc/tab/backspace/enter and
+  /// the four arrows. Split out from [_keyGridRows] so their icons/tooltips
+  /// live in exactly one place regardless of which row they're placed in.
+  _Key _fixedKey(String id) => switch (id) {
+        'nav-esc' => _Key(
+            key: const ValueKey('nav-esc'),
+            label: 'esc',
+            onTap: () => _sendStroke(Usage.escape, Mod.none),
+          ),
+        'nav-tab' => _Key(
+            key: const ValueKey('nav-tab'),
+            icon: Icons.keyboard_tab,
+            tooltip: 'Tab',
+            onTap: () => _sendStroke(Usage.tab, Mod.none),
+          ),
+        'nav-backspace' => _Key(
+            key: const ValueKey('nav-backspace'),
+            icon: Icons.backspace,
+            tooltip: 'Backspace',
+            onTap: () => _sendStroke(Usage.backspace, Mod.none),
+          ),
+        'nav-enter' => _Key(
+            key: const ValueKey('nav-enter'),
+            icon: Icons.keyboard_return,
+            tooltip: 'Enter',
+            onTap: () => _sendStroke(Usage.enter, Mod.none),
+          ),
+        'nav-left' => _Key(
+            key: const ValueKey('nav-left'),
+            icon: Symbols.arrow_left_alt,
+            tooltip: 'Left',
+            onTap: () => _sendStroke(Usage.arrowLeft, Mod.none),
+          ),
+        'nav-up' => _Key(
+            key: const ValueKey('nav-up'),
+            icon: Symbols.arrow_upward_alt,
+            tooltip: 'Up',
+            onTap: () => _sendStroke(Usage.arrowUp, Mod.none),
+          ),
+        'nav-down' => _Key(
+            key: const ValueKey('nav-down'),
+            icon: Symbols.arrow_downward_alt,
+            tooltip: 'Down',
+            onTap: () => _sendStroke(Usage.arrowDown, Mod.none),
+          ),
+        'nav-right' => _Key(
+            key: const ValueKey('nav-right'),
+            icon: Symbols.arrow_right_alt,
+            tooltip: 'Right',
+            onTap: () => _sendStroke(Usage.arrowRight, Mod.none),
+          ),
+        _ => throw ArgumentError('unknown fixed key id: $id'),
+      };
+
   Widget _keyRow(List<Widget> keys) => Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12),
         child: Row(
@@ -206,6 +280,7 @@ class _KeyboardScreenState extends State<KeyboardScreen> {
   Widget build(BuildContext context) {
     final modifiers =
         _modifierRows[widget.targetOs] ?? _modifierRows[TargetOs.macos]!;
+    final modsByKey = {for (final s in modifiers) s.testKey: s};
     return Column(
       children: [
         Padding(
@@ -225,70 +300,15 @@ class _KeyboardScreenState extends State<KeyboardScreen> {
             ),
           ),
         ),
-        _keyRow([
-          for (final spec in modifiers)
-            _Key(
-              key: ValueKey(spec.testKey),
-              label: spec.label,
-              icon: spec.icon,
-              tooltip: spec.tooltip,
-              active: _heldModifiers & spec.bit != 0,
-              onTap: () => _toggleModifier(spec.bit),
-            ),
-        ]),
-        const SizedBox(height: 8),
-        _keyRow([
-          _Key(
-            key: const ValueKey('nav-esc'),
-            label: 'esc',
-            onTap: () => _sendStroke(Usage.escape, Mod.none),
-          ),
-          _Key(
-            key: const ValueKey('nav-tab'),
-            icon: Icons.keyboard_tab,
-            tooltip: 'Tab',
-            onTap: () => _sendStroke(Usage.tab, Mod.none),
-          ),
-          _Key(
-            key: const ValueKey('nav-backspace'),
-            icon: Icons.backspace,
-            tooltip: 'Backspace',
-            onTap: () => _sendStroke(Usage.backspace, Mod.none),
-          ),
-          _Key(
-            key: const ValueKey('nav-enter'),
-            icon: Icons.keyboard_return,
-            tooltip: 'Enter',
-            onTap: () => _sendStroke(Usage.enter, Mod.none),
-          ),
-        ]),
-        const SizedBox(height: 8),
-        _keyRow([
-          _Key(
-            key: const ValueKey('nav-left'),
-            icon: Symbols.arrow_left_alt,
-            tooltip: 'Left',
-            onTap: () => _sendStroke(Usage.arrowLeft, Mod.none),
-          ),
-          _Key(
-            key: const ValueKey('nav-up'),
-            icon: Symbols.arrow_upward_alt,
-            tooltip: 'Up',
-            onTap: () => _sendStroke(Usage.arrowUp, Mod.none),
-          ),
-          _Key(
-            key: const ValueKey('nav-down'),
-            icon: Symbols.arrow_downward_alt,
-            tooltip: 'Down',
-            onTap: () => _sendStroke(Usage.arrowDown, Mod.none),
-          ),
-          _Key(
-            key: const ValueKey('nav-right'),
-            icon: Symbols.arrow_right_alt,
-            tooltip: 'Right',
-            onTap: () => _sendStroke(Usage.arrowRight, Mod.none),
-          ),
-        ]),
+        for (var i = 0; i < _keyGridRows.length; i++) ...[
+          if (i > 0) const SizedBox(height: 8),
+          _keyRow([
+            for (final id in _keyGridRows[i])
+              id.startsWith('mod-')
+                  ? _modifierKey(modsByKey[id]!)
+                  : _fixedKey(id),
+          ]),
+        ],
         if (widget.showImeKeys) ...[
           const SizedBox(height: 8),
           Builder(builder: (context) {
