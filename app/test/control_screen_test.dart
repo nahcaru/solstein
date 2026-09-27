@@ -113,8 +113,10 @@ void main() {
     final backBefore =
         tester.getCenter(find.byTooltip('Back to device list')).dy;
     final settingsBefore = tester.getCenter(settings()).dy;
-    // The keyboard drawer's own media row (bottom of its key grid) shares
-    // the same body, so it should hold still too.
+    // The keyboard drawer's media row (bottom of its key grid) was never at
+    // risk from this bug — it's wrapped in a SingleChildScrollView, so a
+    // shrinking viewport just makes it scrollable instead of overflowing.
+    // Assert it anyway as a plain "nothing moves" invariant for the drawer.
     final volumeUp = find.byIcon(Icons.volume_up);
     final volumeUpBefore = tester.getCenter(volumeUp);
 
