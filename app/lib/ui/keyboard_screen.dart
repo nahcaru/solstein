@@ -230,7 +230,8 @@ class _KeyboardScreenState extends State<KeyboardScreen> {
   _Key _fixedKey(String id) => switch (id) {
         'nav-esc' => _Key(
             key: const ValueKey('nav-esc'),
-            label: 'Esc',
+            // Mac keyboards print "esc" lowercase; Windows/Linux print "Esc".
+            label: widget.targetOs == TargetOs.macos ? 'esc' : 'Esc',
             onTap: () => _sendStroke(Usage.escape, Mod.none),
           ),
         'nav-tab' => _Key(
