@@ -221,7 +221,67 @@ class _PresenterSurfaceState extends State<PresenterSurface>
       label = _padHeld ? 'Frozen' : 'Moving';
       hint = 'Hold to freeze the pointer';
     }
-    return Column(
+    final landscape =
+        MediaQuery.orientationOf(context) == Orientation.landscape;
+    // Landscape: the deck runs down the right edge, beside the pad.
+    final axis = landscape ? Axis.horizontal : Axis.vertical;
+    final deckAxis = landscape ? Axis.vertical : Axis.horizontal;
+    Widget gap(Axis along) => along == Axis.horizontal
+        ? const SizedBox(width: 12)
+        : const SizedBox(height: 12);
+    final deck = <Widget>[
+      _PadButton(
+        key: const ValueKey('prev'),
+        icon: Icons.chevron_left,
+        label: 'Prev',
+        color: scheme.surfaceContainerHigh,
+        activeColor: scheme.primaryContainer,
+        onDown: () {
+          _buzz(_tap);
+          _tapKey(Usage.pageUp);
+        },
+      ),
+      _PadButton(
+        key: const ValueKey('click'),
+        icon: Icons.mouse,
+        label: 'Click',
+        color: scheme.surfaceContainerHigh,
+        activeColor: scheme.primaryContainer,
+        onDown: () {
+          _buzz(_tap);
+          _session.emitAll(_session.engine.click(down: true));
+        },
+        onUp: () {
+          _buzz(_soft);
+          _session.emitAll(_session.engine.click(down: false));
+        },
+      ),
+      if (widget.laser case final laser?)
+        _PadButton(
+          key: const ValueKey('laser'),
+          icon: Icons.gps_fixed,
+          label: 'Laser',
+          color: scheme.surfaceContainerHigh,
+          activeColor: scheme.primaryContainer,
+          onDown: () {
+            _buzz(_tap);
+            _tapKey(laser.usage, modifiers: laser.modifiers);
+          },
+        ),
+      _PadButton(
+        key: const ValueKey('next'),
+        icon: Icons.chevron_right,
+        label: 'Next',
+        color: scheme.surfaceContainerHigh,
+        activeColor: scheme.primaryContainer,
+        onDown: () {
+          _buzz(_tap);
+          _tapKey(Usage.pageDown);
+        },
+      ),
+    ];
+    return Flex(
+      direction: axis,
       children: [
         Expanded(
           child: _PadButton(
@@ -235,73 +295,21 @@ class _PresenterSurfaceState extends State<PresenterSurface>
             onUp: () => _setPad(false),
           ),
         ),
-        const SizedBox(height: 12),
+        gap(axis),
         SizedBox(
-          height: 96,
-          child: Row(
+          width: landscape ? 120 : null,
+          height: landscape ? null : 96,
+          child: Flex(
+            direction: deckAxis,
             children: [
-              Expanded(
-                child: _PadButton(
-                  key: const ValueKey('prev'),
-                  icon: Icons.chevron_left,
-                  label: 'Prev',
-                  color: scheme.surfaceContainerHigh,
-                  activeColor: scheme.primaryContainer,
-                  onDown: () {
-                    _buzz(_tap);
-                    _tapKey(Usage.pageUp);
-                  },
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _PadButton(
-                  key: const ValueKey('click'),
-                  icon: Icons.mouse,
-                  label: 'Click',
-                  color: scheme.surfaceContainerHigh,
-                  activeColor: scheme.primaryContainer,
-                  onDown: () {
-                    _buzz(_tap);
-                    _session.emitAll(_session.engine.click(down: true));
-                  },
-                  onUp: () {
-                    _buzz(_soft);
-                    _session.emitAll(_session.engine.click(down: false));
-                  },
-                ),
-              ),
-              if (widget.laser case final laser?) ...[
-                const SizedBox(width: 12),
+              for (final (i, button) in deck.indexed) ...[
+                if (i > 0) gap(deckAxis),
                 Expanded(
-                  child: _PadButton(
-                    key: const ValueKey('laser'),
-                    icon: Icons.gps_fixed,
-                    label: 'Laser',
-                    color: scheme.surfaceContainerHigh,
-                    activeColor: scheme.primaryContainer,
-                    onDown: () {
-                      _buzz(_tap);
-                      _tapKey(laser.usage, modifiers: laser.modifiers);
-                    },
-                  ),
+                  // Next is the button pressed most, often blind.
+                  flex: i == deck.length - 1 ? 2 : 1,
+                  child: button,
                 ),
               ],
-              const SizedBox(width: 12),
-              Expanded(
-                flex: 2, // Next is the button pressed most, often blind
-                child: _PadButton(
-                  key: const ValueKey('next'),
-                  icon: Icons.chevron_right,
-                  label: 'Next',
-                  color: scheme.surfaceContainerHigh,
-                  activeColor: scheme.primaryContainer,
-                  onDown: () {
-                    _buzz(_tap);
-                    _tapKey(Usage.pageDown);
-                  },
-                ),
-              ),
             ],
           ),
         ),
@@ -345,6 +353,12 @@ class _PadButtonState extends State<_PadButton> {
   bool get _pressed => _pointers.isNotEmpty;
 
   void _down(int pointer) {
+    // Defensive: an orientation change can dispose this pad out from under
+    // an in-progress touch (control_screen.dart keeps identity across
+    // rotation with a GlobalKey now, but this guards any other path that
+    // tears the pad down mid-press). The disposed pad's own dispose() has
+    // already released whatever it held, so there's nothing left to do.
+    if (!mounted) return;
     final first = _pointers.isEmpty;
     _pointers.add(pointer);
     if (!first) return;
@@ -353,6 +367,7 @@ class _PadButtonState extends State<_PadButton> {
   }
 
   void _up(int pointer) {
+    if (!mounted) return;
     if (!_pointers.remove(pointer) || _pointers.isNotEmpty) return;
     setState(() {});
     widget.onUp?.call();
@@ -372,24 +387,31 @@ class _PadButtonState extends State<_PadButton> {
           borderRadius: BorderRadius.circular(16),
         ),
         alignment: Alignment.center,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(widget.icon, size: 36, color: scheme.onSurfaceVariant),
-            const SizedBox(height: 4),
-            Text(widget.label, style: Theme.of(context).textTheme.titleMedium),
-            if (widget.hint != null) ...[
+        // Landscape gives the deck a fixed width but only a share of the
+        // screen height, sometimes less than the icon+label need. Scale the
+        // content down to fit rather than overflow; it renders at natural
+        // size whenever there's room (BoxFit.scaleDown never enlarges).
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(widget.icon, size: 36, color: scheme.onSurfaceVariant),
               const SizedBox(height: 4),
-              Text(
-                widget.hint!,
-                textAlign: TextAlign.center,
-                style: Theme.of(context)
-                    .textTheme
-                    .bodySmall
-                    ?.copyWith(color: scheme.onSurfaceVariant),
-              ),
+              Text(widget.label, style: Theme.of(context).textTheme.titleMedium),
+              if (widget.hint != null) ...[
+                const SizedBox(height: 4),
+                Text(
+                  widget.hint!,
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context)
+                      .textTheme
+                      .bodySmall
+                      ?.copyWith(color: scheme.onSurfaceVariant),
+                ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );
