@@ -113,6 +113,10 @@ void main() {
     final backBefore =
         tester.getCenter(find.byTooltip('Back to device list')).dy;
     final settingsBefore = tester.getCenter(settings()).dy;
+    // The keyboard drawer's own media row (bottom of its key grid) shares
+    // the same body, so it should hold still too.
+    final volumeUp = find.byIcon(Icons.volume_up);
+    final volumeUpBefore = tester.getCenter(volumeUp);
 
     tester.view.viewInsets = const FakeViewPadding(bottom: 300 * 3.0);
     addTearDown(() => tester.view.viewInsets = FakeViewPadding.zero);
@@ -122,6 +126,7 @@ void main() {
     expect(tester.getCenter(find.byTooltip('Back to device list')).dy,
         backBefore);
     expect(tester.getCenter(settings()).dy, settingsBefore);
+    expect(tester.getCenter(volumeUp), volumeUpBefore);
   });
 
   testWidgets('landscape puts the keyboard beside the trackpad', (
