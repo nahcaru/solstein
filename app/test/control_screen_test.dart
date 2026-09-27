@@ -155,4 +155,95 @@ void main() {
     expect(find.byType(TrackpadSurface), findsNothing);
     await tester.pumpWidget(const SizedBox());
   });
+
+  group('system UI', () {
+    // The platform channel also carries unrelated calls we don't care about
+    // here (AppBar's status-bar style via AnnotatedRegion, IconButton's
+    // click sound, …) — only the two calls SystemChrome.setEnabledSystemUIMode
+    // makes are relevant.
+    final calls = <MethodCall>[];
+    Iterable<MethodCall> uiModeCalls() =>
+        calls.where((c) => c.method.startsWith('SystemChrome.setEnabledSystemUI'));
+
+    setUp(() {
+      calls.clear();
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, (call) async {
+        calls.add(call);
+        return null;
+      });
+    });
+
+    tearDown(() {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, null);
+    });
+
+    testWidgets('landscape hides both system bars', (tester) async {
+      landscape(tester);
+      await tester.pumpWidget(app());
+      expect(uiModeCalls(), hasLength(1));
+      expect(uiModeCalls().single.method, 'SystemChrome.setEnabledSystemUIMode');
+      expect(uiModeCalls().single.arguments, 'SystemUiMode.immersiveSticky');
+    });
+
+    testWidgets('portrait restores both system bars', (tester) async {
+      portrait(tester);
+      await tester.pumpWidget(app());
+      expect(uiModeCalls(), hasLength(1));
+      expect(
+          uiModeCalls().single.method, 'SystemChrome.setEnabledSystemUIOverlays');
+      expect(
+        uiModeCalls().single.arguments,
+        containsAll(['SystemUiOverlay.top', 'SystemUiOverlay.bottom']),
+      );
+    });
+
+    testWidgets('rotating mid-session updates the system UI mode', (
+      tester,
+    ) async {
+      landscape(tester);
+      await tester.pumpWidget(app());
+      calls.clear();
+
+      tester.view.physicalSize = const Size(1080, 2400);
+      tester.view.devicePixelRatio = 3.0;
+      await tester.pumpAndSettle();
+
+      expect(uiModeCalls(), hasLength(1));
+      expect(
+          uiModeCalls().single.method, 'SystemChrome.setEnabledSystemUIOverlays');
+    });
+
+    testWidgets('an unrelated rebuild does not re-fire the platform call', (
+      tester,
+    ) async {
+      landscape(tester);
+      await tester.pumpWidget(app());
+      calls.clear();
+
+      await tester.tap(find.byTooltip('Presenter'));
+      await tester.pump();
+
+      expect(uiModeCalls(), isEmpty);
+    });
+
+    testWidgets('leaving the screen restores both system bars', (
+      tester,
+    ) async {
+      landscape(tester);
+      await tester.pumpWidget(app());
+      calls.clear();
+
+      await tester.pumpWidget(const SizedBox());
+
+      expect(uiModeCalls(), hasLength(1));
+      expect(
+          uiModeCalls().single.method, 'SystemChrome.setEnabledSystemUIOverlays');
+      expect(
+        uiModeCalls().single.arguments,
+        containsAll(['SystemUiOverlay.top', 'SystemUiOverlay.bottom']),
+      );
+    });
+  });
 }

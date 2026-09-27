@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../app_model.dart';
 import '../core/input_sink.dart';
@@ -25,6 +26,46 @@ class _ControlScreenState extends State<ControlScreen> {
   /// Settings is pushed over this screen; the presenter underneath must go
   /// quiet while it is open.
   bool _covered = false;
+
+  // Landscape gives the rail the full screen edge instead of a status/nav
+  // bar-adjacent AppBar, so it hides both system bars there — a swipe from
+  // the edge still reveals them (sticky, not fully locked out). Portrait
+  // restores them. Tracked so the platform call only fires on an actual
+  // orientation change, not every build.
+  //
+  // CAVEAT: on a device running Android 16 (API 36) with this app's default
+  // targetSdkVersion (also 36, set by the Flutter Gradle plugin), the OS
+  // enforces edge-to-edge with no opt-out — immersiveSticky is a no-op there
+  // (see SystemChrome.setEnabledSystemUIMode's doc and
+  // https://docs.flutter.dev/release/breaking-changes/default-systemuimode-edge-to-edge).
+  // It still works on older Android versions.
+  Orientation? _systemUiOrientation;
+
+  void _syncSystemUi(Orientation orientation) {
+    if (_systemUiOrientation == orientation) return;
+    _systemUiOrientation = orientation;
+    if (orientation == Orientation.landscape) {
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    } else {
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual,
+          overlays: SystemUiOverlay.values);
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _syncSystemUi(MediaQuery.orientationOf(context));
+  }
+
+  @override
+  void dispose() {
+    // Leaving this screen (back to the device list) restores both bars,
+    // regardless of which orientation the phone was left in.
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual,
+        overlays: SystemUiOverlay.values);
+    super.dispose();
+  }
 
   Future<void> _openSettings(AppModel model) async {
     setState(() => _covered = true);
