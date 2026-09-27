@@ -27,11 +27,29 @@ class _ControlScreenState extends State<ControlScreen> {
   /// quiet while it is open.
   bool _covered = false;
 
+  // The landscape and portrait branches below build structurally different
+  // widget trees (different Scaffold body shape, different ancestor
+  // chain), so without a stable identity, rotating mid-build disposes the
+  // pointer surface and keyboard drawer and creates fresh ones instead of
+  // just relaying them out. Mid-gesture that drops a held presenter clutch
+  // and can throw when the finger lifts against an already-disposed pad
+  // (_PadButtonState in presenter_surface.dart). A GlobalKey lets Flutter
+  // find and reparent the existing Element across the two shapes instead.
+  // (It doesn't defeat the *intentional* dispose when _presenterVisible
+  // toggles the surface's type between TrackpadSurface and
+  // PresenterSurface — a GlobalKey only preserves identity when the widget
+  // type at that key is unchanged.)
+  final _pointerSurfaceKey = GlobalKey();
+  final _keyboardKey = GlobalKey();
+
   // Landscape gives the rail the full screen edge instead of a status/nav
   // bar-adjacent AppBar, so it hides both system bars there — a swipe from
   // the edge still reveals them (sticky, not fully locked out). Portrait
   // restores them. Tracked so the platform call only fires on an actual
-  // orientation change, not every build.
+  // orientation change, not every build. This screen stays mounted under a
+  // pushed SettingsScreen, so it also applies there while Settings is on
+  // top and Settings is in landscape — bars restore fully on returning to
+  // portrait or leaving this screen either way.
   //
   // This app's default targetSdkVersion (36, set by the Flutter Gradle
   // plugin) means Android enforces edge-to-edge content layout with no
@@ -115,6 +133,7 @@ class _ControlScreenState extends State<ControlScreen> {
         padding: const EdgeInsets.all(12),
         child: _presenterVisible
             ? PresenterSurface(
+                key: _pointerSurfaceKey,
                 sink: model.sink,
                 session: model.motion,
                 host: model.presenterHost,
@@ -125,6 +144,7 @@ class _ControlScreenState extends State<ControlScreen> {
                 hapticsEnabled: model.hapticsEnabled,
               )
             : TrackpadSurface(
+                key: _pointerSurfaceKey,
                 sink: model.sink,
                 config: model.gestureConfig,
                 hapticsEnabled: model.hapticsEnabled,
@@ -132,6 +152,7 @@ class _ControlScreenState extends State<ControlScreen> {
       );
 
   Widget _keyboard(AppModel model) => KeyboardScreen(
+        key: _keyboardKey,
         sink: model.sink,
         targetOs: model.targetOs,
         hostLayout: model.hostLayout,

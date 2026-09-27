@@ -130,8 +130,10 @@ void main() {
 
   testWidgets('landscape puts the deck to the right of the pad',
       (tester) async {
+    // A realistic landscape phone (800x360 logical), not the unrealistically
+    // tall screen devicePixelRatio 1.0 would give.
     tester.view.physicalSize = const Size(2400, 1080);
-    tester.view.devicePixelRatio = 1.0;
+    tester.view.devicePixelRatio = 3.0;
     addTearDown(tester.view.reset);
     await tester.pumpWidget(host(laser: const KeyStroke(Mod.none, 0x0F)));
     final clutch = tester.getCenter(pad('clutch'));

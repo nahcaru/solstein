@@ -353,6 +353,12 @@ class _PadButtonState extends State<_PadButton> {
   bool get _pressed => _pointers.isNotEmpty;
 
   void _down(int pointer) {
+    // Defensive: an orientation change can dispose this pad out from under
+    // an in-progress touch (control_screen.dart keeps identity across
+    // rotation with a GlobalKey now, but this guards any other path that
+    // tears the pad down mid-press). The disposed pad's own dispose() has
+    // already released whatever it held, so there's nothing left to do.
+    if (!mounted) return;
     final first = _pointers.isEmpty;
     _pointers.add(pointer);
     if (!first) return;
@@ -361,6 +367,7 @@ class _PadButtonState extends State<_PadButton> {
   }
 
   void _up(int pointer) {
+    if (!mounted) return;
     if (!_pointers.remove(pointer) || _pointers.isNotEmpty) return;
     setState(() {});
     widget.onUp?.call();

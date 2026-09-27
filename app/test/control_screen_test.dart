@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:helm/app_model.dart';
 import 'package:helm/ui/control_screen.dart';
 import 'package:helm/ui/keyboard_screen.dart';
+import 'package:helm/ui/presenter_surface.dart';
 import 'package:helm/ui/trackpad_surface.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -42,8 +43,12 @@ void main() {
   }
 
   void landscape(WidgetTester tester) {
+    // A realistic landscape phone (800x360 logical), not the unrealistically
+    // tall screen devicePixelRatio 1.0 would give — that gap is how the
+    // header-rail overflow and keyboard-inset bugs both slipped through
+    // earlier review.
     tester.view.physicalSize = const Size(2400, 1080);
-    tester.view.devicePixelRatio = 1.0;
+    tester.view.devicePixelRatio = 3.0;
     addTearDown(tester.view.reset);
   }
 
@@ -100,13 +105,10 @@ void main() {
   testWidgets(
       'landscape rail does not overflow or move when the on-screen '
       'keyboard opens', (tester) async {
-    // A realistic landscape phone (800x360 logical) with Gboard's height
-    // simulated as a bottom view inset — regression for a RenderFlex
-    // overflow when the inset shrank the rail below the buttons' natural
-    // height.
-    tester.view.physicalSize = const Size(2400, 1080);
-    tester.view.devicePixelRatio = 3.0;
-    addTearDown(tester.view.reset);
+    // Gboard's height simulated as a bottom view inset — regression for a
+    // RenderFlex overflow when the inset shrank the rail below the
+    // buttons' natural height.
+    landscape(tester);
     await tester.pumpWidget(app());
     await tester.tap(find.byTooltip('Keyboard'));
     await tester.pumpAndSettle();
@@ -154,6 +156,38 @@ void main() {
     expect(find.byKey(const ValueKey('clutch')), findsOneWidget);
     expect(find.byType(TrackpadSurface), findsNothing);
     await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets(
+      'rotating mid-press keeps the presenter pad\'s identity — lifting '
+      'the finger afterwards does not throw', (tester) async {
+    // Regression: the landscape/portrait branches used to build
+    // structurally different widget trees with no stable key, so an
+    // orientation change (easy to trigger by sweeping the phone while
+    // holding the presenter's clutch pad) disposed and recreated
+    // PresenterSurface mid-gesture. The finger's pointer route still
+    // pointed at the disposed _PadButtonState, and lifting it threw
+    // "setState() called after dispose()".
+    portrait(tester);
+    await tester.pumpWidget(app());
+    await tester.tap(find.byTooltip('Presenter'));
+    await tester.pump();
+
+    final clutch = find.byKey(const ValueKey('clutch'));
+    final before = tester.state(find.byType(PresenterSurface));
+    final gesture = await tester.startGesture(tester.getCenter(clutch));
+    await tester.pump();
+
+    landscape(tester);
+    await tester.pump();
+
+    // Still the same element (reparented, not disposed) — the actual fix,
+    // not just the absence of a crash.
+    expect(tester.state(find.byType(PresenterSurface)), same(before));
+
+    await gesture.up();
+    await tester.pump();
+    expect(tester.takeException(), isNull);
   });
 
   group('system UI', () {
