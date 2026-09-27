@@ -193,8 +193,8 @@ class _ControlScreenState extends State<ControlScreen> {
 
     return Scaffold(
       appBar: AppBar(
+        // No title, matching the landscape rail, which has never shown one.
         leading: _backButton(model),
-        title: const Text('Helm'),
         actions: _headerActions(model, capabilities),
       ),
       body: ListenableBuilder(
