@@ -35,12 +35,14 @@ class HidTransport implements InputSink {
   final _state = StreamController<SinkState>.broadcast();
   StreamSubscription<SinkState>? _stateSubscription;
 
-  // Throttled coalescing: motion accumulates here and goes out at most once
-  // per [_motionInterval]. An unthrottled per-sample stream starves A2DP
-  // audio sharing the radio (ADR-010). The first move after idle still
-  // flushes on the next microtask; moves inside the window that follows are
-  // summed (no distance lost) and flushed when it closes. Button/key events
-  // are never throttled.
+  // Throttled coalescing: motion accumulates here and goes out as at most
+  // one report per [_motionInterval] (ADR-010, ADR-011). An unthrottled
+  // per-sample stream starves A2DP audio sharing the radio; so does bursting
+  // several reports back-to-back in one flush, which is why a flush sends
+  // only one ±127-clamped report and carries any remainder into the next
+  // window rather than splitting (see _flushMotion). The first move after
+  // idle still flushes on the next microtask. Button/key events are never
+  // throttled.
   static const _motionInterval = Duration(milliseconds: 15); // ~66 Hz
   int _pendingDx = 0, _pendingDy = 0, _pendingWheel = 0, _pendingPan = 0;
   bool _flushScheduled = false;
@@ -231,17 +233,24 @@ class HidTransport implements InputSink {
         _pendingPan == 0) {
       return;
     }
-    final reports = encodeMouseReports(
-      buttons: _buttons,
-      dx: _pendingDx,
-      dy: _pendingDy,
-      wheel: _pendingWheel,
-      pan: _pendingPan,
-    );
-    _pendingDx = _pendingDy = _pendingWheel = _pendingPan = 0;
-    for (final report in reports) {
-      _sendMouse(report);
-    }
+    // Never send more than one mouse report per flush. A fast swipe can
+    // accumulate beyond ±127 in a single window; splitting that into
+    // several reports fired back-to-back (encodeMouseReports) bursted onto
+    // the radio and made Bluetooth audio coexistence *worse* than the old
+    // one-report-per-touch-sample stream did, even though the average
+    // report rate is lower (ADR-011). Clamp to one report and carry the
+    // remainder into the next window instead — no distance is lost, an
+    // extreme flick just catches up over a couple more ticks.
+    final dx = _pendingDx.clamp(-127, 127);
+    final dy = _pendingDy.clamp(-127, 127);
+    final wheel = _pendingWheel.clamp(-127, 127);
+    final pan = _pendingPan.clamp(-127, 127);
+    _pendingDx -= dx;
+    _pendingDy -= dy;
+    _pendingWheel -= wheel;
+    _pendingPan -= pan;
+    _sendMouse(
+        encodeMouseReport(buttons: _buttons, dx: dx, dy: dy, wheel: wheel, pan: pan));
     // A click-triggered flush restarts the window too: it also sent motion.
     _motionWindow?.cancel();
     _motionWindow = Timer(_motionInterval, () {

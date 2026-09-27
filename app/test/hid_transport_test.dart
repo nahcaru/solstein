@@ -131,6 +131,50 @@ void main() {
       });
     });
 
+    test(
+      'a swipe fast enough to accumulate beyond ±127 in one window spreads '
+      'across several ticks instead of bursting split reports back-to-back',
+      () {
+        fakeAsync((async) {
+          // Regression: encodeMouseReports used to split a large backlog
+          // into several reports fired back-to-back in the same flush,
+          // which made Bluetooth audio contention *worse* than the
+          // pre-throttle per-sample stream, despite the lower average
+          // report rate (ADR-011). A flush must send at most one report.
+          transport.send(const PointerMove(1, 0));
+          async.flushMicrotasks(); // opens the window
+          calls.clear();
+
+          // Two moves land inside the same open window, summing to 180 —
+          // beyond what a single ±127 report can carry.
+          transport
+            ..send(const PointerMove(90, 0))
+            ..send(const PointerMove(90, 0));
+          expect(mouseReports(), isEmpty); // window still open, nothing sent
+
+          const interval = Duration(milliseconds: 15);
+          async.elapse(interval);
+          // Exactly one report, clamped to 127 — not two reports (127+53)
+          // fired together.
+          expect(mouseReports(), [
+            [0x00, 127, 0, 0, 0],
+          ]);
+
+          calls.clear();
+          async.elapse(interval);
+          // The remaining 180-127=53 lands a full tick later, not bundled
+          // with the first report.
+          expect(mouseReports(), [
+            [0x00, 53, 0, 0, 0],
+          ]);
+
+          calls.clear();
+          async.elapse(const Duration(milliseconds: 100));
+          expect(mouseReports(), isEmpty); // fully drained, idle window closes
+        });
+      },
+    );
+
     test('releaseAll cancels the pending window flush', () {
       fakeAsync((async) {
         transport.send(const PointerMove(1, 0));

@@ -292,7 +292,7 @@ With Bluetooth headphones playing music, moving the pointer broke up the audio. 
 
 ### Decision
 
-- **Throttled coalescing in `HidTransport`.** A single constant, `_motionInterval` = 15 ms (~66 Hz). The first move after idle still flushes on the next microtask, so the first move has no added latency. That flush opens a 15 ms window. Moves and scrolls inside the window accumulate and go out as one report when it closes, and the next window opens only if something was sent. No distance is lost: `encodeMouseReports` already splits sums beyond ±127. Buttons, keys and media keys are never throttled. A click flushes pending motion ahead of its edge, and `releaseAll()` and `dispose()` cancel the pending window.
+- **Throttled coalescing in `HidTransport`.** A single constant, `_motionInterval` = 15 ms (~66 Hz). The first move after idle still flushes on the next microtask, so the first move has no added latency. That flush opens a 15 ms window. Moves and scrolls inside the window accumulate and go out as one report when it closes, and the next window opens only if something was sent. Buttons, keys and media keys are never throttled. A click flushes pending motion ahead of its edge, and `releaseAll()` and `dispose()` cancel the pending window. (Superseded in one respect by ADR-011: a flush now sends at most one report, not a split run of several.)
 - **A dedicated send thread in `HidManager`.** All `sendReport` calls are posted to one `HandlerThread` ("helm-hid-send"), which keeps mouse, keyboard and consumer reports in order. `disconnect()`, the host-switch path of `connect()`, and `stop()` post their Bluetooth teardown calls to the same queue, behind the release-all reports, so the releases are sent before the link drops.
 - **QoS stays best-effort.** `registerApp` still passes `null` QoS. Reserving bandwidth with `BluetoothHidDeviceAppQosSettings` would take guaranteed airtime from A2DP, which is the opposite of what we want.
 
@@ -307,3 +307,32 @@ With Bluetooth headphones playing music, moving the pointer broke up the audio. 
 - Pointer motion arrives at up to ~66 Hz, in slightly larger steps. It has not yet been checked on hardware whether this is enough on every host and headset. The interval is one constant, so it is easy to tune.
 - Sends are fire-and-forget: the Dart side can no longer see the `sendReport` return value (it was already ignored).
 - `stop()` clears its fields right away and unregisters asynchronously. A `start()` issued within the same few milliseconds could briefly overlap the old proxy's teardown.
+
+---
+
+## ADR-011: a flush sends at most one HID report, never a split burst
+
+**Status**: Accepted
+**Date**: 2026-09-28
+
+### Context
+
+On-device testing of ADR-010's throttle found pointer movement noticeably more responsive, as intended, but Bluetooth music stutter got *worse*, not better.
+
+The cause: `_flushMotion()` called `encodeMouseReports`, which splits an accumulated delta beyond ±127 into as many reports as needed and sends every one of them back-to-back with no gap, in the same microtask. Before ADR-010, each touch sample produced at most one report (the gesture engine already clamps a single sample's output to ±127), sent roughly every 8 ms on a 120 Hz+ touchscreen — never more than one report in a row. After ADR-010, a 15 ms window can accumulate more than one sample's worth of motion; a fast swipe easily sums past ±127, and the fix as first written then fired two or three reports at once every 15 ms instead of one report every 8 ms. Fewer reports on average, but bursty: several back-to-back over-the-air transmissions apparently cost the shared radio more than the same total data spread out, even at a higher steady rate.
+
+### Decision
+
+A flush now sends **at most one** report: the pending deltas are clamped to ±127 for that report, and whatever remains subtracted back into the pending accumulators instead of being sent immediately. The already-armed 15 ms window picks up the remainder on its next tick. No distance is lost, an extreme flick just catches up over a couple of extra ticks instead of arriving all at once.
+
+`encodeMouseReports` (the multi-report splitter) is untouched and still covers cases that need to encode an arbitrarily large one-shot delta; `HidTransport` simply stopped being one of its callers.
+
+### Alternatives Considered
+
+- **Shorten `_motionInterval`.** A smaller window accumulates less per tick, but does not eliminate bursts outright — a fast enough swipe still exceeds ±127 in any fixed window, and a shorter interval also gives back some of ADR-010's reduction in report count.
+- **Lower the gesture engine's per-sample gain.** Would shrink deltas app-wide, changing pointer feel to work around a transport-layer problem.
+
+### Consequences
+
+- Very fast flicks lag the finger by up to a couple of throttle ticks (~30 ms) before the pointer catches up, rather than jumping the full distance in one 15 ms step. Not yet judged on hardware whether this is noticeable in normal use.
+- Still unverified on hardware whether this actually restores (or improves on) the pre-ADR-010 stutter behavior — device testing is the next step.
