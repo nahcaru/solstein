@@ -48,7 +48,7 @@ class _ModifierSpec {
 
 /// Modifier lineup per target OS: native order and naming. Every OS shows the
 /// same dedicated icon for Ctrl/Shift (they're the same key everywhere); ⌘/⌥
-/// get macOS's own icons. ⊞ Win, Super, and Alt stay text — no Windows-logo or
+/// get macOS's own icons. Win, Super, and Alt stay text — no Windows-logo or
 /// Super icon exists, and "Alt" reads clearer as text than as a generic icon.
 const Map<TargetOs, List<_ModifierSpec>> _modifierRows = {
   TargetOs.macos: [
@@ -59,7 +59,7 @@ const Map<TargetOs, List<_ModifierSpec>> _modifierRows = {
   ],
   TargetOs.windows: [
     _ModifierSpec.icon(Icons.keyboard_control_key, 'Control', Mod.lCtrl, 'mod-ctrl'),
-    _ModifierSpec.label('⊞ Win', Mod.lGui, 'mod-gui'),
+    _ModifierSpec.label('Win', Mod.lGui, 'mod-gui'),
     _ModifierSpec.label('Alt', Mod.lAlt, 'mod-alt'),
     _ModifierSpec.icon(Symbols.shift, 'Shift', Mod.lShift, 'mod-shift'),
   ],
@@ -251,7 +251,7 @@ class _KeyboardScreenState extends State<KeyboardScreen> {
           ),
           _Key(
             key: const ValueKey('nav-backspace'),
-            icon: Icons.keyboard_backspace,
+            icon: Icons.backspace,
             tooltip: 'Backspace',
             onTap: () => _sendStroke(Usage.backspace, Mod.none),
           ),
@@ -266,25 +266,25 @@ class _KeyboardScreenState extends State<KeyboardScreen> {
         _keyRow([
           _Key(
             key: const ValueKey('nav-left'),
-            icon: Icons.keyboard_arrow_left,
+            icon: Symbols.arrow_left_alt,
             tooltip: 'Left',
             onTap: () => _sendStroke(Usage.arrowLeft, Mod.none),
           ),
           _Key(
             key: const ValueKey('nav-up'),
-            icon: Icons.keyboard_arrow_up,
+            icon: Symbols.arrow_upward_alt,
             tooltip: 'Up',
             onTap: () => _sendStroke(Usage.arrowUp, Mod.none),
           ),
           _Key(
             key: const ValueKey('nav-down'),
-            icon: Icons.keyboard_arrow_down,
+            icon: Symbols.arrow_downward_alt,
             tooltip: 'Down',
             onTap: () => _sendStroke(Usage.arrowDown, Mod.none),
           ),
           _Key(
             key: const ValueKey('nav-right'),
-            icon: Icons.keyboard_arrow_right,
+            icon: Symbols.arrow_right_alt,
             tooltip: 'Right',
             onTap: () => _sendStroke(Usage.arrowRight, Mod.none),
           ),
