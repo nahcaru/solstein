@@ -131,10 +131,11 @@ void main() {
     final sink = FakeSink();
     await pumpKeyboard(tester, sink, us);
 
-    // Tap ⌘, then type "a": the pre-fix code OR'd ⌘ into the keystroke
-    // (sending ⌘A — select all, not the character) but still recorded "a"
-    // in the field, so the next backspace count would have been wrong.
-    await tester.tap(find.text('⌘'));
+    // Tap ⌘ (rendered as an icon, found by its test key), then type "a": the
+    // pre-fix code OR'd ⌘ into the keystroke (sending ⌘A — select all, not
+    // the character) but still recorded "a" in the field, so the next
+    // backspace count would have been wrong.
+    await tester.tap(find.byKey(const ValueKey('mod-gui')));
     await tester.pump();
     await tester.enterText(find.byType(TextField), 'a');
     await tester.pump();
@@ -158,7 +159,7 @@ void main() {
     await tester.enterText(find.byType(TextField), 'hi');
     await tester.pump();
 
-    await tester.tap(find.text('⌘'));
+    await tester.tap(find.byKey(const ValueKey('mod-gui')));
     await tester.pump();
 
     // Toggling a modifier sends nothing and must not disturb the field.
@@ -175,9 +176,9 @@ void main() {
     await tester.pump();
     sink.events.clear();
 
-    // The on-screen ⌫ sends a raw backspace straight to the host without
-    // going through the diff loop at all.
-    await tester.tap(find.text('⌫'));
+    // The on-screen ⌫ (rendered as an icon) sends a raw backspace straight to
+    // the host without going through the diff loop at all.
+    await tester.tap(find.byKey(const ValueKey('nav-backspace')));
     await tester.pump();
 
     expect(sink.downUsages, [Usage.backspace]);

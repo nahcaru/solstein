@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:material_symbols_icons/symbols.dart';
 
 import '../core/input_event.dart';
 import '../core/input_sink.dart';
@@ -28,32 +29,45 @@ class KeyboardScreen extends StatefulWidget {
   State<KeyboardScreen> createState() => _KeyboardScreenState();
 }
 
+/// A modifier key: either a dedicated icon (with a [tooltip] naming it, since
+/// the glyph alone can't) or a text [label], never both. [testKey] identifies
+/// the button in widget tests independent of which one it renders as.
 class _ModifierSpec {
-  const _ModifierSpec(this.label, this.bit);
+  const _ModifierSpec.icon(this.icon, this.tooltip, this.bit, this.testKey)
+      : label = null;
+  const _ModifierSpec.label(this.label, this.bit, this.testKey)
+      : icon = null,
+        tooltip = null;
 
-  final String label;
+  final String? label;
+  final IconData? icon;
+  final String? tooltip;
   final int bit;
+  final String testKey;
 }
 
-/// Modifier lineup per target OS: native order and naming.
+/// Modifier lineup per target OS: native order and naming. Every OS shows the
+/// same dedicated icon for Ctrl/Shift (they're the same key everywhere); ⌘/⌥
+/// get macOS's own icons. ⊞ Win, Super, and Alt stay text — no Windows-logo or
+/// Super icon exists, and "Alt" reads clearer as text than as a generic icon.
 const Map<TargetOs, List<_ModifierSpec>> _modifierRows = {
   TargetOs.macos: [
-    _ModifierSpec('⌃', Mod.lCtrl),
-    _ModifierSpec('⌥', Mod.lAlt),
-    _ModifierSpec('⌘', Mod.lGui),
-    _ModifierSpec('⇧', Mod.lShift),
+    _ModifierSpec.icon(Icons.keyboard_control_key, 'Control', Mod.lCtrl, 'mod-ctrl'),
+    _ModifierSpec.icon(Icons.keyboard_option_key, 'Option', Mod.lAlt, 'mod-alt'),
+    _ModifierSpec.icon(Icons.keyboard_command_key, 'Command', Mod.lGui, 'mod-gui'),
+    _ModifierSpec.icon(Symbols.shift, 'Shift', Mod.lShift, 'mod-shift'),
   ],
   TargetOs.windows: [
-    _ModifierSpec('Ctrl', Mod.lCtrl),
-    _ModifierSpec('⊞ Win', Mod.lGui),
-    _ModifierSpec('Alt', Mod.lAlt),
-    _ModifierSpec('Shift', Mod.lShift),
+    _ModifierSpec.icon(Icons.keyboard_control_key, 'Control', Mod.lCtrl, 'mod-ctrl'),
+    _ModifierSpec.label('⊞ Win', Mod.lGui, 'mod-gui'),
+    _ModifierSpec.label('Alt', Mod.lAlt, 'mod-alt'),
+    _ModifierSpec.icon(Symbols.shift, 'Shift', Mod.lShift, 'mod-shift'),
   ],
   TargetOs.linux: [
-    _ModifierSpec('Ctrl', Mod.lCtrl),
-    _ModifierSpec('Super', Mod.lGui),
-    _ModifierSpec('Alt', Mod.lAlt),
-    _ModifierSpec('Shift', Mod.lShift),
+    _ModifierSpec.icon(Icons.keyboard_control_key, 'Control', Mod.lCtrl, 'mod-ctrl'),
+    _ModifierSpec.label('Super', Mod.lGui, 'mod-gui'),
+    _ModifierSpec.label('Alt', Mod.lAlt, 'mod-alt'),
+    _ModifierSpec.icon(Symbols.shift, 'Shift', Mod.lShift, 'mod-shift'),
   ],
 };
 
@@ -214,24 +228,66 @@ class _KeyboardScreenState extends State<KeyboardScreen> {
         _keyRow([
           for (final spec in modifiers)
             _Key(
+              key: ValueKey(spec.testKey),
               label: spec.label,
+              icon: spec.icon,
+              tooltip: spec.tooltip,
               active: _heldModifiers & spec.bit != 0,
               onTap: () => _toggleModifier(spec.bit),
             ),
         ]),
         const SizedBox(height: 8),
         _keyRow([
-          _Key(label: 'esc', onTap: () => _sendStroke(Usage.escape, Mod.none)),
-          _Key(label: 'tab', onTap: () => _sendStroke(Usage.tab, Mod.none)),
-          _Key(label: '⌫', onTap: () => _sendStroke(Usage.backspace, Mod.none)),
-          _Key(label: '⏎', onTap: () => _sendStroke(Usage.enter, Mod.none)),
+          _Key(
+            key: const ValueKey('nav-esc'),
+            label: 'esc',
+            onTap: () => _sendStroke(Usage.escape, Mod.none),
+          ),
+          _Key(
+            key: const ValueKey('nav-tab'),
+            icon: Icons.keyboard_tab,
+            tooltip: 'Tab',
+            onTap: () => _sendStroke(Usage.tab, Mod.none),
+          ),
+          _Key(
+            key: const ValueKey('nav-backspace'),
+            icon: Icons.keyboard_backspace,
+            tooltip: 'Backspace',
+            onTap: () => _sendStroke(Usage.backspace, Mod.none),
+          ),
+          _Key(
+            key: const ValueKey('nav-enter'),
+            icon: Icons.keyboard_return,
+            tooltip: 'Enter',
+            onTap: () => _sendStroke(Usage.enter, Mod.none),
+          ),
         ]),
         const SizedBox(height: 8),
         _keyRow([
-          _Key(label: '←', onTap: () => _sendStroke(Usage.arrowLeft, Mod.none)),
-          _Key(label: '↑', onTap: () => _sendStroke(Usage.arrowUp, Mod.none)),
-          _Key(label: '↓', onTap: () => _sendStroke(Usage.arrowDown, Mod.none)),
-          _Key(label: '→', onTap: () => _sendStroke(Usage.arrowRight, Mod.none)),
+          _Key(
+            key: const ValueKey('nav-left'),
+            icon: Icons.keyboard_arrow_left,
+            tooltip: 'Left',
+            onTap: () => _sendStroke(Usage.arrowLeft, Mod.none),
+          ),
+          _Key(
+            key: const ValueKey('nav-up'),
+            icon: Icons.keyboard_arrow_up,
+            tooltip: 'Up',
+            onTap: () => _sendStroke(Usage.arrowUp, Mod.none),
+          ),
+          _Key(
+            key: const ValueKey('nav-down'),
+            icon: Icons.keyboard_arrow_down,
+            tooltip: 'Down',
+            onTap: () => _sendStroke(Usage.arrowDown, Mod.none),
+          ),
+          _Key(
+            key: const ValueKey('nav-right'),
+            icon: Icons.keyboard_arrow_right,
+            tooltip: 'Right',
+            onTap: () => _sendStroke(Usage.arrowRight, Mod.none),
+          ),
         ]),
         if (widget.showImeKeys) ...[
           const SizedBox(height: 8),
@@ -282,20 +338,29 @@ class _KeyboardScreenState extends State<KeyboardScreen> {
 }
 
 /// The one key style used across modifier, navigation, and media rows.
-/// Modifiers pass [active] to render latched (filled) state.
+/// Modifiers pass [active] to render latched (filled) state. An icon key
+/// needs [tooltip] naming it — unlike a text label, the glyph alone doesn't.
 class _Key extends StatelessWidget {
-  const _Key({this.label, this.icon, required this.onTap, this.active = false})
-      : assert(label != null || icon != null);
+  const _Key({
+    super.key,
+    this.label,
+    this.icon,
+    this.tooltip,
+    required this.onTap,
+    this.active = false,
+  }) : assert(label != null || icon != null);
 
   final String? label;
   final IconData? icon;
+  final String? tooltip;
   final VoidCallback onTap;
   final bool active;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return SizedBox(
+    final fg = active ? scheme.onPrimaryContainer : scheme.onSurface;
+    final key = SizedBox(
       height: 44,
       child: Material(
         color: active ? scheme.primaryContainer : scheme.surfaceContainerHigh,
@@ -305,7 +370,7 @@ class _Key extends StatelessWidget {
           onTap: onTap,
           child: Center(
             child: icon != null
-                ? Icon(icon, size: 20)
+                ? Icon(icon, size: 20, color: fg)
                 : Text(
                     label!,
                     maxLines: 1,
@@ -314,14 +379,13 @@ class _Key extends StatelessWidget {
                       fontSize: label!.length > 2 ? 14 : 18,
                       fontWeight:
                           active ? FontWeight.w600 : FontWeight.w400,
-                      color: active
-                          ? scheme.onPrimaryContainer
-                          : scheme.onSurface,
+                      color: fg,
                     ),
                   ),
           ),
         ),
       ),
     );
+    return tooltip != null ? Tooltip(message: tooltip!, child: key) : key;
   }
 }
