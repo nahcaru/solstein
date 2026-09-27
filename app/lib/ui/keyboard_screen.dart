@@ -61,9 +61,9 @@ class _ModifierSpec {
 /// Modifier lineup per target OS: native order and naming, each following
 /// its own keyboard's own printed convention. macOS gets dedicated icons for
 /// Control/Option/Command, captioned in lowercase; Shift is symbol-only,
-/// exactly as a Mac keyboard prints it. Windows/Linux only give Ctrl an
-/// icon+caption — Win, Super, Alt and Shift stay plain text, since no
-/// Windows-logo or Super icon exists and those keyboards print words anyway.
+/// exactly as a Mac keyboard prints it. Windows/Linux are plain text
+/// throughout — Ctrl, Win/Super, Alt and Shift — since none of those
+/// keyboards print a symbol for any of them.
 const Map<TargetOs, List<_ModifierSpec>> _modifierRows = {
   TargetOs.macos: [
     _ModifierSpec.icon(Icons.keyboard_control_key, 'Control', Mod.lCtrl, 'mod-ctrl', caption: 'control'),
@@ -72,13 +72,13 @@ const Map<TargetOs, List<_ModifierSpec>> _modifierRows = {
     _ModifierSpec.icon(Symbols.shift, 'Shift', Mod.lShift, 'mod-shift'),
   ],
   TargetOs.windows: [
-    _ModifierSpec.icon(Icons.keyboard_control_key, 'Ctrl', Mod.lCtrl, 'mod-ctrl', caption: 'Ctrl'),
+    _ModifierSpec.label('Ctrl', Mod.lCtrl, 'mod-ctrl'),
     _ModifierSpec.label('Win', Mod.lGui, 'mod-gui'),
     _ModifierSpec.label('Alt', Mod.lAlt, 'mod-alt'),
     _ModifierSpec.label('Shift', Mod.lShift, 'mod-shift'),
   ],
   TargetOs.linux: [
-    _ModifierSpec.icon(Icons.keyboard_control_key, 'Ctrl', Mod.lCtrl, 'mod-ctrl', caption: 'Ctrl'),
+    _ModifierSpec.label('Ctrl', Mod.lCtrl, 'mod-ctrl'),
     _ModifierSpec.label('Super', Mod.lGui, 'mod-gui'),
     _ModifierSpec.label('Alt', Mod.lAlt, 'mod-alt'),
     _ModifierSpec.label('Shift', Mod.lShift, 'mod-shift'),
@@ -230,7 +230,7 @@ class _KeyboardScreenState extends State<KeyboardScreen> {
   _Key _fixedKey(String id) => switch (id) {
         'nav-esc' => _Key(
             key: const ValueKey('nav-esc'),
-            label: 'esc',
+            label: 'Esc',
             onTap: () => _sendStroke(Usage.escape, Mod.none),
           ),
         'nav-tab' => _Key(
