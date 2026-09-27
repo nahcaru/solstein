@@ -146,6 +146,19 @@ void main() {
         greaterThan(tester.getSize(pad('prev')).height));
   });
 
+  testWidgets('does not overflow on a real phone-sized landscape screen',
+      (tester) async {
+    // A realistic landscape phone: 2400x1080 physical at 3x density gives an
+    // 800x360 logical screen, far shorter than the earlier test's 1080dp.
+    // Four stacked deck buttons then have too little height for icon+label
+    // unless the content scales down (regression: RenderFlex overflow).
+    tester.view.physicalSize = const Size(2400, 1080);
+    tester.view.devicePixelRatio = 3.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(host(laser: const KeyStroke(Mod.none, 0x0F)));
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('starts the sensors on mount and stops them on unmount',
       (tester) async {
     await tester.pumpWidget(host());

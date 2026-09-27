@@ -380,23 +380,31 @@ class _PadButtonState extends State<_PadButton> {
           borderRadius: BorderRadius.circular(16),
         ),
         alignment: Alignment.center,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(widget.icon, size: 36, color: scheme.onSurfaceVariant),
-            const SizedBox(height: 4),
-            Text(widget.label, style: Theme.of(context).textTheme.titleMedium),
-            if (widget.hint != null) ...[
+        // Landscape gives the deck a fixed width but only a share of the
+        // screen height, sometimes less than the icon+label need. Scale the
+        // content down to fit rather than overflow; it renders at natural
+        // size whenever there's room (BoxFit.scaleDown never enlarges).
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(widget.icon, size: 36, color: scheme.onSurfaceVariant),
               const SizedBox(height: 4),
-              Text(
-                widget.hint!,
-                textAlign: TextAlign.center,
-                style: Theme.of(
-                  context,
-                ).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
-              ),
+              Text(widget.label, style: Theme.of(context).textTheme.titleMedium),
+              if (widget.hint != null) ...[
+                const SizedBox(height: 4),
+                Text(
+                  widget.hint!,
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context)
+                      .textTheme
+                      .bodySmall
+                      ?.copyWith(color: scheme.onSurfaceVariant),
+                ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );
