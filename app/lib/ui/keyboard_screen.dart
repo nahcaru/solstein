@@ -39,12 +39,12 @@ class _ModifierSpec {
     this.tooltip,
     this.bit,
     this.testKey, {
-    this.showCaption = false,
+    this.caption,
   }) : label = null;
   const _ModifierSpec.label(this.label, this.bit, this.testKey)
       : icon = null,
         tooltip = null,
-        showCaption = false;
+        caption = null;
 
   final String? label;
   final IconData? icon;
@@ -52,33 +52,36 @@ class _ModifierSpec {
   final int bit;
   final String testKey;
 
-  /// Control/Option/Command print their name below the symbol, the way a
-  /// physical Mac keyboard does — Shift doesn't need the same help.
-  final bool showCaption;
+  /// Printed below the symbol, the way a physical keyboard prints the key's
+  /// name — macOS in lowercase ("control"), Windows/Linux in the abbreviated
+  /// form printed on those keyboards ("Ctrl"). Null renders icon-only.
+  final String? caption;
 }
 
-/// Modifier lineup per target OS: native order and naming. Every OS shows the
-/// same dedicated icon for Ctrl/Shift (they're the same key everywhere); ⌘/⌥
-/// get macOS's own icons. Win, Super, and Alt stay text — no Windows-logo or
-/// Super icon exists, and "Alt" reads clearer as text than as a generic icon.
+/// Modifier lineup per target OS: native order and naming, each following
+/// its own keyboard's own printed convention. macOS gets dedicated icons for
+/// Control/Option/Command, captioned in lowercase; Shift is symbol-only,
+/// exactly as a Mac keyboard prints it. Windows/Linux only give Ctrl an
+/// icon+caption — Win, Super, Alt and Shift stay plain text, since no
+/// Windows-logo or Super icon exists and those keyboards print words anyway.
 const Map<TargetOs, List<_ModifierSpec>> _modifierRows = {
   TargetOs.macos: [
-    _ModifierSpec.icon(Icons.keyboard_control_key, 'Control', Mod.lCtrl, 'mod-ctrl', showCaption: true),
-    _ModifierSpec.icon(Icons.keyboard_option_key, 'Option', Mod.lAlt, 'mod-alt', showCaption: true),
-    _ModifierSpec.icon(Icons.keyboard_command_key, 'Command', Mod.lGui, 'mod-gui', showCaption: true),
+    _ModifierSpec.icon(Icons.keyboard_control_key, 'Control', Mod.lCtrl, 'mod-ctrl', caption: 'control'),
+    _ModifierSpec.icon(Icons.keyboard_option_key, 'Option', Mod.lAlt, 'mod-alt', caption: 'option'),
+    _ModifierSpec.icon(Icons.keyboard_command_key, 'Command', Mod.lGui, 'mod-gui', caption: 'command'),
     _ModifierSpec.icon(Symbols.shift, 'Shift', Mod.lShift, 'mod-shift'),
   ],
   TargetOs.windows: [
-    _ModifierSpec.icon(Icons.keyboard_control_key, 'Control', Mod.lCtrl, 'mod-ctrl', showCaption: true),
+    _ModifierSpec.icon(Icons.keyboard_control_key, 'Ctrl', Mod.lCtrl, 'mod-ctrl', caption: 'Ctrl'),
     _ModifierSpec.label('Win', Mod.lGui, 'mod-gui'),
     _ModifierSpec.label('Alt', Mod.lAlt, 'mod-alt'),
-    _ModifierSpec.icon(Symbols.shift, 'Shift', Mod.lShift, 'mod-shift'),
+    _ModifierSpec.label('Shift', Mod.lShift, 'mod-shift'),
   ],
   TargetOs.linux: [
-    _ModifierSpec.icon(Icons.keyboard_control_key, 'Control', Mod.lCtrl, 'mod-ctrl', showCaption: true),
+    _ModifierSpec.icon(Icons.keyboard_control_key, 'Ctrl', Mod.lCtrl, 'mod-ctrl', caption: 'Ctrl'),
     _ModifierSpec.label('Super', Mod.lGui, 'mod-gui'),
     _ModifierSpec.label('Alt', Mod.lAlt, 'mod-alt'),
-    _ModifierSpec.icon(Symbols.shift, 'Shift', Mod.lShift, 'mod-shift'),
+    _ModifierSpec.label('Shift', Mod.lShift, 'mod-shift'),
   ],
 };
 
@@ -216,7 +219,7 @@ class _KeyboardScreenState extends State<KeyboardScreen> {
         label: spec.label,
         icon: spec.icon,
         tooltip: spec.tooltip,
-        caption: spec.showCaption ? spec.tooltip : null,
+        caption: spec.caption,
         active: _heldModifiers & spec.bit != 0,
         onTap: () => _toggleModifier(spec.bit),
       );
@@ -234,6 +237,9 @@ class _KeyboardScreenState extends State<KeyboardScreen> {
             key: const ValueKey('nav-tab'),
             icon: Icons.keyboard_tab,
             tooltip: 'Tab',
+            // Windows/Linux keyboards print "Tab" on the key; macOS doesn't
+            // caption its icon keys beyond Control/Option/Command.
+            caption: widget.targetOs == TargetOs.macos ? null : 'Tab',
             onTap: () => _sendStroke(Usage.tab, Mod.none),
           ),
         'nav-backspace' => _Key(
