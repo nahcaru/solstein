@@ -35,10 +35,17 @@ class HidTransport implements InputSink {
   final _state = StreamController<SinkState>.broadcast();
   StreamSubscription<SinkState>? _stateSubscription;
 
-  // Latest-wins coalescing: motion accumulates here and flushes once per
-  // microtask; button/key events flush immediately (never dropped).
+  // Throttled coalescing: motion accumulates here and goes out at most once
+  // per [_motionInterval]. An unthrottled per-sample stream starves A2DP
+  // audio sharing the radio (ADR-010). The first move after idle still
+  // flushes on the next microtask; moves inside the window that follows are
+  // summed (no distance lost) and flushed when it closes. Button/key events
+  // are never throttled.
+  static const _motionInterval = Duration(milliseconds: 15); // ~66 Hz
   int _pendingDx = 0, _pendingDy = 0, _pendingWheel = 0, _pendingPan = 0;
   bool _flushScheduled = false;
+  // Non-null while inside the throttle window opened by the last flush.
+  Timer? _motionWindow;
   int _buttons = 0;
 
   // Host-mode estimate so repeated gestures don't undo themselves — the
@@ -114,6 +121,8 @@ class HidTransport implements InputSink {
   /// Neutralizes the host: all buttons and keys up. Called on disconnect,
   /// app pause, and any gesture abort (stuck-key prevention).
   Future<void> releaseAll() async {
+    _motionWindow?.cancel();
+    _motionWindow = null;
     _pendingDx = _pendingDy = _pendingWheel = _pendingPan = 0;
     _buttons = 0;
     await _sendMouse(mouseReleaseAll());
@@ -207,7 +216,7 @@ class HidTransport implements InputSink {
   }
 
   void _scheduleFlush() {
-    if (_flushScheduled) return;
+    if (_flushScheduled || _motionWindow != null) return;
     _flushScheduled = true;
     scheduleMicrotask(() {
       _flushScheduled = false;
@@ -233,6 +242,12 @@ class HidTransport implements InputSink {
     for (final report in reports) {
       _sendMouse(report);
     }
+    // A click-triggered flush restarts the window too: it also sent motion.
+    _motionWindow?.cancel();
+    _motionWindow = Timer(_motionInterval, () {
+      _motionWindow = null;
+      _flushMotion();
+    });
   }
 
   Future<void> _sendMouse(Uint8List payload) =>
@@ -247,6 +262,8 @@ class HidTransport implements InputSink {
       .catchError((_) {});
 
   Future<void> dispose() async {
+    _motionWindow?.cancel();
+    _motionWindow = null;
     await _stateSubscription?.cancel();
     await _state.close();
   }

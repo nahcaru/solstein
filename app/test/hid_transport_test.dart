@@ -1,3 +1,4 @@
+import 'package:fake_async/fake_async.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:helm/core/input_event.dart';
@@ -39,15 +40,114 @@ void main() {
     expect(calls[1].$2, [0x00, 0, 0, 0, 0]);
   });
 
-  test('pointer moves coalesce into one report per microtask', () async {
-    transport
-      ..send(const PointerMove(3, 4))
-      ..send(const PointerMove(2, -1))
-      ..send(const Scroll(0, 1));
-    await pumpEventQueue();
-    final mouse = calls.where((c) => c.$1 == 'sendMouseReport').toList();
-    expect(mouse.length, 1);
-    expect(mouse.single.$2, [0x00, 5, 3, 1, 0]);
+  test(
+    'pointer moves within one throttle window coalesce into one report',
+    () async {
+      transport
+        ..send(const PointerMove(3, 4))
+        ..send(const PointerMove(2, -1))
+        ..send(const Scroll(0, 1));
+      await pumpEventQueue();
+      final mouse = calls.where((c) => c.$1 == 'sendMouseReport').toList();
+      expect(mouse.length, 1);
+      expect(mouse.single.$2, [0x00, 5, 3, 1, 0]);
+    },
+  );
+
+  group('motion throttle', () {
+    List<Uint8List> mouseReports() => [
+      for (final c in calls)
+        if (c.$1 == 'sendMouseReport') c.$2!,
+    ];
+
+    test('first move after idle goes out immediately', () {
+      fakeAsync((async) {
+        transport.send(const PointerMove(1, 2));
+        async.flushMicrotasks();
+        expect(mouseReports(), [
+          [0x00, 1, 2, 0, 0],
+        ]);
+      });
+    });
+
+    test(
+      'moves spread across ~10 ms sum into one report at the window end',
+      () {
+        fakeAsync((async) {
+          transport.send(const PointerMove(1, 1)); // opens the window
+          async.flushMicrotasks();
+          calls.clear();
+          const moves = [(3, 1), (-2, 4), (7, -3), (5, 5), (1, 2)];
+          for (final (dx, dy) in moves) {
+            async.elapse(const Duration(milliseconds: 2));
+            transport.send(PointerMove(dx, dy));
+          }
+          expect(mouseReports(), isEmpty); // t = 10 ms, still inside the window
+          async.elapse(const Duration(milliseconds: 5));
+          expect(mouseReports(), [
+            [0x00, 14, 9, 0, 0],
+          ]);
+          async.elapse(const Duration(milliseconds: 100));
+          expect(mouseReports().length, 1); // idle window closes silently
+        });
+      },
+    );
+
+    test('a 1 kHz move stream for 150 ms yields ~10 reports, not 150', () {
+      fakeAsync((async) {
+        var sentDx = 0;
+        for (var i = 0; i < 150; i++) {
+          transport.send(const PointerMove(1, 0));
+          sentDx += 1;
+          async.elapse(const Duration(milliseconds: 1));
+        }
+        async.elapse(const Duration(milliseconds: 50));
+        final reports = mouseReports();
+        expect(reports.length, inInclusiveRange(10, 12));
+        final receivedDx = reports.fold<int>(
+          0,
+          (sum, r) => sum + r[1].toSigned(8),
+        );
+        expect(receivedDx, sentDx);
+      });
+    });
+
+    test('a mid-window click flushes pending motion first, with no stray '
+        'report afterwards', () {
+      fakeAsync((async) {
+        transport.send(const PointerMove(1, 0));
+        async.flushMicrotasks();
+        calls.clear();
+        async.elapse(const Duration(milliseconds: 5));
+        transport
+          ..send(const PointerMove(4, 6))
+          ..send(const ButtonEvent(Button.left, down: true));
+        expect(mouseReports(), [
+          [0x00, 4, 6, 0, 0],
+          [0x01, 0, 0, 0, 0],
+        ]);
+        async.elapse(const Duration(milliseconds: 100));
+        expect(mouseReports().length, 2);
+      });
+    });
+
+    test('releaseAll cancels the pending window flush', () {
+      fakeAsync((async) {
+        transport.send(const PointerMove(1, 0));
+        async.flushMicrotasks();
+        async.elapse(const Duration(milliseconds: 5));
+        transport.send(const PointerMove(9, 9));
+        calls.clear();
+        transport.releaseAll();
+        async.flushMicrotasks();
+        final afterRelease = calls.length;
+        async.elapse(const Duration(milliseconds: 100));
+        expect(calls.length, afterRelease);
+        expect(mouseReports(), [
+          [0, 0, 0, 0, 0],
+        ]);
+      });
+    });
   });
 
   test('held button is carried in coalesced motion reports', () async {

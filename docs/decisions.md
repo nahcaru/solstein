@@ -275,3 +275,35 @@ The first presenter mode moved the cursor whenever the phone moved. On a phone t
 - Volume-key capture depends on the device and OS version and must be tested on hardware.
 - The research note says the trackpad uses `f(v) = v^1.4`; the code's `accelExponent` default is 1.0 (linear), so there was no shared curve to reuse.
 - 100 Hz motion means about 100 HID mouse reports per second while moving. Watch for congestion; the sampling period can be lowered.
+
+---
+
+## ADR-010: HID motion is throttled to ~66 Hz and sent off the main thread
+
+**Status**: Accepted
+**Date**: 2026-09-27
+
+### Context
+
+With Bluetooth headphones playing music, moving the pointer broke up the audio. With the headphones on the Mac, the music stuttered while the pointer moved. With them on the phone, the pointer itself lagged. Two causes combined:
+
+- **An unthrottled report stream.** `HidTransport` flushed accumulated motion once per microtask, which in practice meant one HID report per touch sample (120 Hz or more) or per gyro sample in presenter mode (100 Hz, flagged in ADR-009). Each report is a separate over-the-air transmission competing with A2DP for radio time on whichever side is also streaming audio. `docs/protocol.md` already asked for "≤ ~90 Hz, latest-wins", but that was never implemented for HID.
+- **`sendReport` on the main thread.** `BluetoothHidDevice.sendReport` is a blocking binder call, and it ran on Android's main thread, the same thread that delivers touch events. When the stack was busy with audio, touch dispatch waited on it.
+
+### Decision
+
+- **Throttled coalescing in `HidTransport`.** A single constant, `_motionInterval` = 15 ms (~66 Hz). The first move after idle still flushes on the next microtask, so the first move has no added latency. That flush opens a 15 ms window. Moves and scrolls inside the window accumulate and go out as one report when it closes, and the next window opens only if something was sent. No distance is lost: `encodeMouseReports` already splits sums beyond ±127. Buttons, keys and media keys are never throttled. A click flushes pending motion ahead of its edge, and `releaseAll()` and `dispose()` cancel the pending window.
+- **A dedicated send thread in `HidManager`.** All `sendReport` calls are posted to one `HandlerThread` ("helm-hid-send"), which keeps mouse, keyboard and consumer reports in order. `disconnect()`, the host-switch path of `connect()`, and `stop()` post their Bluetooth teardown calls to the same queue, behind the release-all reports, so the releases are sent before the link drops.
+- **QoS stays best-effort.** `registerApp` still passes `null` QoS. Reserving bandwidth with `BluetoothHidDeviceAppQosSettings` would take guaranteed airtime from A2DP, which is the opposite of what we want.
+
+### Alternatives Considered
+
+- **~90 Hz, the protocol.md ceiling.** Closer to the touch rate, but fewer reports is the whole point. 66 Hz is still above the display rate of most hosts, and the pointer still feels smooth.
+- **Adaptive rate (drop further when audio is detected).** The phone cannot see the Mac's audio link. A fixed interval is simpler and handles both cases.
+- **Throttle in Kotlin instead of Dart.** It would also cover future callers, but accumulated deltas and the button-ordering rule already live in `HidTransport`. Throttling in Kotlin would duplicate that state across the channel.
+
+### Consequences
+
+- Pointer motion arrives at up to ~66 Hz, in slightly larger steps. It has not yet been checked on hardware whether this is enough on every host and headset. The interval is one constant, so it is easy to tune.
+- Sends are fire-and-forget: the Dart side can no longer see the `sendReport` return value (it was already ignored).
+- `stop()` clears its fields right away and unregisters asynchronously. A `start()` issued within the same few milliseconds could briefly overlap the old proxy's teardown.

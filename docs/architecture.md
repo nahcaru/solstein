@@ -92,6 +92,7 @@ Shared Dart core (BLE central, protocol decode, tray UI, per-OS gesture config) 
 - Any disconnect/pause → send release-all mouse + keyboard reports (stuck-key prevention).
 - Presenter mode stops the sensor stream, opens the clutch, releases a held click, gives back the volume keys and the screen timeout on app pause and on leaving the mode.
 - Link congestion → latest-wins coalescing for moves/scroll/phases; **never** drop button/key events.
+  - Over HID this is a fixed ~66 Hz (15 ms) throttle window in `HidTransport`, and reports are sent from a background thread (ADR-010).
 
 ## Testing
 
