@@ -33,12 +33,13 @@ class _ControlScreenState extends State<ControlScreen> {
   // restores them. Tracked so the platform call only fires on an actual
   // orientation change, not every build.
   //
-  // CAVEAT: on a device running Android 16 (API 36) with this app's default
-  // targetSdkVersion (also 36, set by the Flutter Gradle plugin), the OS
-  // enforces edge-to-edge with no opt-out — immersiveSticky is a no-op there
-  // (see SystemChrome.setEnabledSystemUIMode's doc and
-  // https://docs.flutter.dev/release/breaking-changes/default-systemuimode-edge-to-edge).
-  // It still works on older Android versions.
+  // This app's default targetSdkVersion (36, set by the Flutter Gradle
+  // plugin) means Android enforces edge-to-edge content layout with no
+  // opt-out — but hiding the bars themselves is a separate axis from that
+  // layout, so immersiveSticky still applies here; confirmed working on
+  // Android 17. Don't add android:windowOptOutEdgeToEdgeEnforcement to
+  // styles.xml — that's for disabling edge-to-edge layout, unrelated to
+  // this, and can crash on 16+ without versioned resources.
   Orientation? _systemUiOrientation;
 
   void _syncSystemUi(Orientation orientation) {
