@@ -108,6 +108,7 @@ class _ControlScreenState extends State<ControlScreen> {
       return Scaffold(
         body: SafeArea(
           child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               _HeaderRail(
                 back: _backButton(model),
@@ -159,8 +160,10 @@ class _ControlScreenState extends State<ControlScreen> {
   }
 }
 
-/// Landscape stand-in for the app bar: the same buttons, stacked down the
-/// left edge so the pad keeps the full screen height.
+/// Landscape stand-in for the app bar: the same buttons down the left edge,
+/// matching an AppBar's leading/actions split — back at the top (where
+/// leading sits at the reading-start edge), the rest at the bottom (where
+/// actions sit at the far edge).
 class _HeaderRail extends StatelessWidget {
   const _HeaderRail({required this.back, required this.actions});
 
@@ -174,13 +177,13 @@ class _HeaderRail extends StatelessWidget {
       color: theme.appBarTheme.backgroundColor ?? theme.colorScheme.surface,
       child: SizedBox(
         width: 64,
-        child: SingleChildScrollView(
+        child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 8),
           child: Column(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               back,
-              const SizedBox(height: 16),
-              ...actions,
+              Column(mainAxisSize: MainAxisSize.min, children: actions),
             ],
           ),
         ),

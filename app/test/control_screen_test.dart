@@ -84,6 +84,19 @@ void main() {
     expect(tester.getCenter(settings()).dx, lessThan(trackpad.left));
   });
 
+  testWidgets(
+      'landscape rail pins back to the top and the other buttons to the '
+      'bottom, matching the app bar\'s leading/actions split', (tester) async {
+    landscape(tester);
+    await tester.pumpWidget(app());
+    final screenHeight =
+        tester.view.physicalSize.height / tester.view.devicePixelRatio;
+    final backY = tester.getCenter(find.byTooltip('Back to device list')).dy;
+    final settingsY = tester.getCenter(settings()).dy;
+    expect(backY, lessThan(screenHeight * 0.25));
+    expect(settingsY, greaterThan(screenHeight * 0.75));
+  });
+
   testWidgets('landscape puts the keyboard beside the trackpad', (
     tester,
   ) async {
