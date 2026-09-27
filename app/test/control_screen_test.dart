@@ -97,6 +97,33 @@ void main() {
     expect(settingsY, greaterThan(screenHeight * 0.75));
   });
 
+  testWidgets(
+      'landscape rail does not overflow or move when the on-screen '
+      'keyboard opens', (tester) async {
+    // A realistic landscape phone (800x360 logical) with Gboard's height
+    // simulated as a bottom view inset — regression for a RenderFlex
+    // overflow when the inset shrank the rail below the buttons' natural
+    // height.
+    tester.view.physicalSize = const Size(2400, 1080);
+    tester.view.devicePixelRatio = 3.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(app());
+    await tester.tap(find.byTooltip('Keyboard'));
+    await tester.pumpAndSettle();
+    final backBefore =
+        tester.getCenter(find.byTooltip('Back to device list')).dy;
+    final settingsBefore = tester.getCenter(settings()).dy;
+
+    tester.view.viewInsets = const FakeViewPadding(bottom: 300 * 3.0);
+    addTearDown(() => tester.view.viewInsets = FakeViewPadding.zero);
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(tester.getCenter(find.byTooltip('Back to device list')).dy,
+        backBefore);
+    expect(tester.getCenter(settings()).dy, settingsBefore);
+  });
+
   testWidgets('landscape puts the keyboard beside the trackpad', (
     tester,
   ) async {

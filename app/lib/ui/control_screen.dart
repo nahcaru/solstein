@@ -106,6 +106,14 @@ class _ControlScreenState extends State<ControlScreen> {
 
     if (MediaQuery.orientationOf(context) == Orientation.landscape) {
       return Scaffold(
+        // The on-screen keyboard opening for the IME text field shouldn't
+        // shrink this layout: in the rail that squeezes the bottom three
+        // buttons toward the back button and can overflow (a landscape
+        // phone leaves little height once the keyboard's height is
+        // subtracted). The rail and deck stay put; only the keyboard
+        // drawer's own TextField needs to stay reachable, and it already
+        // sits above the key grid, not near the bottom.
+        resizeToAvoidBottomInset: false,
         body: SafeArea(
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
