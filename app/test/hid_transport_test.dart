@@ -1,3 +1,4 @@
+import 'package:fake_async/fake_async.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:helm/core/input_event.dart';
@@ -39,15 +40,241 @@ void main() {
     expect(calls[1].$2, [0x00, 0, 0, 0, 0]);
   });
 
-  test('pointer moves coalesce into one report per microtask', () async {
-    transport
-      ..send(const PointerMove(3, 4))
-      ..send(const PointerMove(2, -1))
-      ..send(const Scroll(0, 1));
-    await pumpEventQueue();
-    final mouse = calls.where((c) => c.$1 == 'sendMouseReport').toList();
-    expect(mouse.length, 1);
-    expect(mouse.single.$2, [0x00, 5, 3, 1, 0]);
+  test(
+    'pointer moves within one throttle window coalesce into one report',
+    () async {
+      transport
+        ..send(const PointerMove(3, 4))
+        ..send(const PointerMove(2, -1))
+        ..send(const Scroll(0, 1));
+      await pumpEventQueue();
+      final mouse = calls.where((c) => c.$1 == 'sendMouseReport').toList();
+      expect(mouse.length, 1);
+      expect(mouse.single.$2, [0x00, 5, 3, 1, 0]);
+    },
+  );
+
+  group('motion throttle', () {
+    List<Uint8List> mouseReports() => [
+      for (final c in calls)
+        if (c.$1 == 'sendMouseReport') c.$2!,
+    ];
+
+    test('first move after idle goes out immediately', () {
+      fakeAsync((async) {
+        transport.send(const PointerMove(1, 2));
+        async.flushMicrotasks();
+        expect(mouseReports(), [
+          [0x00, 1, 2, 0, 0],
+        ]);
+      });
+    });
+
+    test(
+      'moves spread across ~10 ms sum into one report at the window end',
+      () {
+        fakeAsync((async) {
+          transport.send(const PointerMove(1, 1)); // opens the window
+          async.flushMicrotasks();
+          calls.clear();
+          const moves = [(3, 1), (-2, 4), (7, -3), (5, 5), (1, 2)];
+          for (final (dx, dy) in moves) {
+            async.elapse(const Duration(milliseconds: 2));
+            transport.send(PointerMove(dx, dy));
+          }
+          expect(mouseReports(), isEmpty); // t = 10 ms, still inside the window
+          async.elapse(const Duration(milliseconds: 5));
+          expect(mouseReports(), [
+            [0x00, 14, 9, 0, 0],
+          ]);
+          async.elapse(const Duration(milliseconds: 100));
+          expect(mouseReports().length, 1); // idle window closes silently
+        });
+      },
+    );
+
+    test('a 1 kHz move stream for 150 ms yields ~10 reports, not 150', () {
+      fakeAsync((async) {
+        var sentDx = 0;
+        for (var i = 0; i < 150; i++) {
+          transport.send(const PointerMove(1, 0));
+          sentDx += 1;
+          async.elapse(const Duration(milliseconds: 1));
+        }
+        async.elapse(const Duration(milliseconds: 50));
+        final reports = mouseReports();
+        expect(reports.length, inInclusiveRange(10, 12));
+        final receivedDx = reports.fold<int>(
+          0,
+          (sum, r) => sum + r[1].toSigned(8),
+        );
+        expect(receivedDx, sentDx);
+      });
+    });
+
+    test('a mid-window click flushes pending motion first, with no stray '
+        'report afterwards', () {
+      fakeAsync((async) {
+        transport.send(const PointerMove(1, 0));
+        async.flushMicrotasks();
+        calls.clear();
+        async.elapse(const Duration(milliseconds: 5));
+        transport
+          ..send(const PointerMove(4, 6))
+          ..send(const ButtonEvent(Button.left, down: true));
+        expect(mouseReports(), [
+          [0x00, 4, 6, 0, 0],
+          [0x01, 0, 0, 0, 0],
+        ]);
+        async.elapse(const Duration(milliseconds: 100));
+        expect(mouseReports().length, 2);
+      });
+    });
+
+    test(
+      'a swipe fast enough to accumulate beyond ±127 in one window spreads '
+      'across several ticks instead of bursting split reports back-to-back',
+      () {
+        fakeAsync((async) {
+          // Regression: encodeMouseReports used to split a large backlog
+          // into several reports fired back-to-back in the same flush,
+          // which made Bluetooth audio contention *worse* than the
+          // pre-throttle per-sample stream, despite the lower average
+          // report rate (ADR-011). A flush must send at most one report.
+          transport.send(const PointerMove(1, 0));
+          async.flushMicrotasks(); // opens the window
+          calls.clear();
+
+          // Two moves land inside the same open window, summing to 180 —
+          // beyond what a single ±127 report can carry.
+          transport
+            ..send(const PointerMove(90, 0))
+            ..send(const PointerMove(90, 0));
+          expect(mouseReports(), isEmpty); // window still open, nothing sent
+
+          const interval = Duration(milliseconds: 15);
+          async.elapse(interval);
+          // Exactly one report, clamped to 127 — not two reports (127+53)
+          // fired together.
+          expect(mouseReports(), [
+            [0x00, 127, 0, 0, 0],
+          ]);
+
+          calls.clear();
+          async.elapse(interval);
+          // The remaining 180-127=53 lands a full tick later, not bundled
+          // with the first report.
+          expect(mouseReports(), [
+            [0x00, 53, 0, 0, 0],
+          ]);
+
+          calls.clear();
+          async.elapse(const Duration(milliseconds: 100));
+          expect(mouseReports(), isEmpty); // fully drained, idle window closes
+        });
+      },
+    );
+
+    test(
+      'a drag release with a large backlog flushes ALL motion — with the '
+      'held button — before the release edge',
+      () {
+        fakeAsync((async) {
+          // Regression: _flushMotion() (one clamped report, remainder
+          // carried forward) broke the click-ordering guarantee once more
+          // than ±127 was queued. The tail of a fast drag used to arrive
+          // AFTER the release, carrying the released (wrong) button state —
+          // the drop would land short and the cursor would keep moving with
+          // no button held.
+          transport.send(const ButtonEvent(Button.left, down: true));
+          transport.send(const PointerMove(1, 0)); // opens the window
+          async.flushMicrotasks();
+          calls.clear();
+
+          // 300 units queued inside the still-open window — needs 3 reports
+          // to drain (127+127+46).
+          transport
+            ..send(const PointerMove(120, 0))
+            ..send(const PointerMove(120, 0))
+            ..send(const PointerMove(60, 0))
+            ..send(const ButtonEvent(Button.left, down: false));
+
+          expect(mouseReports(), [
+            [0x01, 127, 0, 0, 0], // still held: buttons=1 on every drag report
+            [0x01, 127, 0, 0, 0],
+            [0x01, 46, 0, 0, 0],
+            [0x00, 0, 0, 0, 0], // the release edge, strictly last
+          ]);
+
+          // Nothing left pending; the window was cancelled, not rearmed.
+          calls.clear();
+          async.elapse(const Duration(milliseconds: 100));
+          expect(mouseReports(), isEmpty);
+        });
+      },
+    );
+
+    test(
+      'a button press flushes ALL queued pre-press motion with the OLD '
+      'button state first',
+      () {
+        fakeAsync((async) {
+          // The reverse case: hover motion queued before a press must not
+          // attach to the newly-pressed button, which would turn a plain
+          // click into an accidental drag.
+          transport.send(const PointerMove(1, 0)); // opens the window
+          async.flushMicrotasks();
+          calls.clear();
+
+          transport
+            ..send(const PointerMove(150, 0)) // exceeds ±127
+            ..send(const ButtonEvent(Button.left, down: true));
+
+          expect(mouseReports(), [
+            [0x00, 127, 0, 0, 0], // pre-press motion, buttons still 0
+            [0x00, 23, 0, 0, 0],
+            [0x01, 0, 0, 0, 0], // the press edge, strictly last
+          ]);
+        });
+      },
+    );
+
+    test('releaseAll flushes nothing — a large backlog is discarded, not '
+        'sent', () {
+      fakeAsync((async) {
+        transport.send(const PointerMove(1, 0));
+        async.flushMicrotasks();
+        async.elapse(const Duration(milliseconds: 5));
+        transport.send(const PointerMove(300, 0)); // large backlog, queued
+        calls.clear();
+        transport.releaseAll();
+        async.flushMicrotasks();
+        expect(mouseReports(), [
+          [0, 0, 0, 0, 0], // only the release-all report, not the backlog
+        ]);
+        calls.clear();
+        async.elapse(const Duration(milliseconds: 100));
+        expect(mouseReports(), isEmpty); // no stray report for the discarded backlog
+      });
+    });
+
+    test('releaseAll cancels the pending window flush', () {
+      fakeAsync((async) {
+        transport.send(const PointerMove(1, 0));
+        async.flushMicrotasks();
+        async.elapse(const Duration(milliseconds: 5));
+        transport.send(const PointerMove(9, 9));
+        calls.clear();
+        transport.releaseAll();
+        async.flushMicrotasks();
+        final afterRelease = calls.length;
+        async.elapse(const Duration(milliseconds: 100));
+        expect(calls.length, afterRelease);
+        expect(mouseReports(), [
+          [0, 0, 0, 0, 0],
+        ]);
+      });
+    });
   });
 
   test('held button is carried in coalesced motion reports', () async {

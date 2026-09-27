@@ -275,3 +275,64 @@ The first presenter mode moved the cursor whenever the phone moved. On a phone t
 - Volume-key capture depends on the device and OS version and must be tested on hardware.
 - The research note says the trackpad uses `f(v) = v^1.4`; the code's `accelExponent` default is 1.0 (linear), so there was no shared curve to reuse.
 - 100 Hz motion means about 100 HID mouse reports per second while moving. Watch for congestion; the sampling period can be lowered.
+
+---
+
+## ADR-010: HID motion is throttled to ~66 Hz and sent off the main thread
+
+**Status**: Accepted
+**Date**: 2026-09-27
+
+### Context
+
+With Bluetooth headphones playing music, moving the pointer broke up the audio. With the headphones on the Mac, the music stuttered while the pointer moved. With them on the phone, the pointer itself lagged. Two causes combined:
+
+- **An unthrottled report stream.** `HidTransport` flushed accumulated motion once per microtask, which in practice meant one HID report per touch sample (120 Hz or more) or per gyro sample in presenter mode (100 Hz, flagged in ADR-009). Each report is a separate over-the-air transmission competing with A2DP for radio time on whichever side is also streaming audio. `docs/protocol.md` already asked for "≤ ~90 Hz, latest-wins", but that was never implemented for HID.
+- **`sendReport` on the main thread.** `BluetoothHidDevice.sendReport` is a blocking binder call, and it ran on Android's main thread, the same thread that delivers touch events. When the stack was busy with audio, touch dispatch waited on it.
+
+### Decision
+
+- **Throttled coalescing in `HidTransport`.** A single constant, `_motionInterval` = 15 ms (~66 Hz). The first move after idle still flushes on the next microtask, so the first move has no added latency. That flush opens a 15 ms window. Moves and scrolls inside the window accumulate and go out as one report when it closes, and the next window opens only if something was sent. Buttons, keys and media keys are never throttled. A click flushes *all* pending motion ahead of its edge (not just one throttled tick's worth — see ADR-011's second fix), and `releaseAll()` and `dispose()` cancel the pending window. (Superseded in one respect by ADR-011: a throttled flush now sends at most one report, not a split run of several.)
+- **A dedicated send thread in `HidManager`.** All `sendReport` calls are posted to one `HandlerThread` ("helm-hid-send"), which keeps mouse, keyboard and consumer reports in order. `disconnect()`, the host-switch path of `connect()`, and `stop()` post their Bluetooth teardown calls to the same queue, behind the release-all reports, so the releases are sent before the link drops.
+- **QoS stays best-effort.** `registerApp` still passes `null` QoS. Reserving bandwidth with `BluetoothHidDeviceAppQosSettings` would take guaranteed airtime from A2DP, which is the opposite of what we want.
+
+### Alternatives Considered
+
+- **~90 Hz, the protocol.md ceiling.** Closer to the touch rate, but fewer reports is the whole point. 66 Hz is still above the display rate of most hosts, and the pointer still feels smooth.
+- **Adaptive rate (drop further when audio is detected).** The phone cannot see the Mac's audio link. A fixed interval is simpler and handles both cases.
+- **Throttle in Kotlin instead of Dart.** It would also cover future callers, but accumulated deltas and the button-ordering rule already live in `HidTransport`. Throttling in Kotlin would duplicate that state across the channel.
+
+### Consequences
+
+- Pointer motion arrives at up to ~66 Hz, in slightly larger steps. It has not yet been checked on hardware whether this is enough on every host and headset. The interval is one constant, so it is easy to tune.
+- Sends are fire-and-forget: the Dart side can no longer see the `sendReport` return value (it was already ignored).
+- `stop()` clears its fields right away and unregisters asynchronously. A `start()` issued within the same few milliseconds could briefly overlap the old proxy's teardown.
+
+---
+
+## ADR-011: a flush sends at most one HID report, never a split burst
+
+**Status**: Accepted
+**Date**: 2026-09-28
+
+### Context
+
+On-device testing of ADR-010's throttle found pointer movement noticeably more responsive, as intended, but Bluetooth music stutter got *worse*, not better.
+
+The cause: `_flushMotion()` called `encodeMouseReports`, which splits an accumulated delta beyond ±127 into as many reports as needed and sends every one of them back-to-back with no gap, in the same microtask. Before ADR-010, each touch sample produced at most one report (the gesture engine already clamps a single sample's output to ±127), sent roughly every 8 ms on a 120 Hz+ touchscreen — never more than one report in a row. After ADR-010, a 15 ms window can accumulate more than one sample's worth of motion; a fast swipe easily sums past ±127, and the fix as first written then fired two or three reports at once every 15 ms instead of one report every 8 ms. Fewer reports on average, but bursty: several back-to-back over-the-air transmissions apparently cost the shared radio more than the same total data spread out, even at a higher steady rate.
+
+### Decision
+
+A *throttled* flush now sends **at most one** report: the pending deltas are clamped to ±127 for that report, and whatever remains subtracted back into the pending accumulators instead of being sent immediately. The already-armed 15 ms window picks up the remainder on its next tick. No distance is lost, an extreme flick just catches up over a couple of extra ticks instead of arriving all at once.
+
+`encodeMouseReports` (the multi-report splitter) is still used, but no longer by the throttled path — `_flushMotion()` stopped being one of its callers. It moved to a second, separate method, `_flushAllMotion()`, used only for the button-edge ordering guarantee: a `ButtonEvent` must send *all* pending motion before its edge, not just one throttled tick's worth, or motion from before the edge can arrive after it carrying the new button state — a drag's tail end continuing to move with the button released, or pre-click hover motion turning a plain click into an accidental drag. This was a regression caught by review shortly after this ADR's first version, not by device testing; the burst it can cause only happens at a click boundary (rare), not continuously during a swipe, so it doesn't reintroduce the problem this ADR fixes.
+
+### Alternatives Considered
+
+- **Shorten `_motionInterval`.** A smaller window accumulates less per tick, but does not eliminate bursts outright — a fast enough swipe still exceeds ±127 in any fixed window, and a shorter interval also gives back some of ADR-010's reduction in report count.
+- **Lower the gesture engine's per-sample gain.** Would shrink deltas app-wide, changing pointer feel to work around a transport-layer problem.
+
+### Consequences
+
+- Very fast flicks lag the finger by up to a couple of throttle ticks (~30 ms) before the pointer catches up, rather than jumping the full distance in one 15 ms step. Confirmed on hardware: pointer motion is smoother and Bluetooth audio contention is markedly better than both the pre-ADR-010 baseline and this ADR's first version.
+- A click or drag release with a large backlog queued (a fast flick immediately followed by lifting the finger) can still burst several reports at once via `_flushAllMotion()` — rare enough, and discrete enough, not to matter for audio coexistence.

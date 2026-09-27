@@ -9,13 +9,15 @@ import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothProfile
 import android.content.Context
 import android.os.Handler
+import android.os.HandlerThread
 import android.os.Looper
 import java.util.concurrent.Executors
 
 /**
  * Owns the BluetoothHidDevice session: profile proxy → registerApp →
  * connect → sendReport. Runs for as long as HidService keeps the process
- * foregrounded. All state callbacks are delivered on the main thread.
+ * foregrounded. Profile callbacks arrive on the main thread, HID app
+ * callbacks on [executor], and reports go out on a dedicated send thread.
  *
  * Bluetooth permissions are requested by MainActivity before any of this
  * is invoked, hence the SuppressLint.
@@ -33,14 +35,20 @@ object HidManager {
         private set
 
     private var adapter: BluetoothAdapter? = null
-    private var hidDevice: BluetoothHidDevice? = null
+    @Volatile private var hidDevice: BluetoothHidDevice? = null
     private var starting = false
     private var registered = false
-    private var connectedDevice: BluetoothDevice? = null
+    @Volatile private var connectedDevice: BluetoothDevice? = null
     private var pendingConnectAddress: String? = null
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private val executor = Executors.newSingleThreadExecutor()
+
+    // sendReport is a blocking binder call; on the main thread it stalled
+    // touch dispatch. One serial queue keeps mouse/keyboard/consumer order.
+    private val sendHandler: Handler by lazy {
+        Handler(HandlerThread("helm-hid-send").apply { start() }.looper)
+    }
 
     val isConnected: Boolean get() = connectedDevice != null
     val connectedAddress: String? get() = connectedDevice?.address
@@ -178,7 +186,7 @@ object HidManager {
             pendingConnectAddress = address
             post(State.CONNECTING)
             releaseAll()
-            hid.disconnect(current)
+            sendHandler.post { hid.disconnect(current) }
             return
         }
         val device = adapter?.getRemoteDevice(address)
@@ -187,11 +195,15 @@ object HidManager {
         if (!hid.connect(device)) fail("Bluetooth stack rejected the connection request")
     }
 
-    /** Sends release-all reports first so the host never sees stuck input. */
+    /**
+     * Sends release-all reports first so the host never sees stuck input.
+     * The disconnect rides the same send queue so it cannot overtake them.
+     */
     fun disconnect() {
         releaseAll()
+        val hid = hidDevice ?: return
         val device = connectedDevice ?: return
-        hidDevice?.disconnect(device)
+        sendHandler.post { hid.disconnect(device) }
     }
 
     fun releaseAll() {
@@ -200,32 +212,49 @@ object HidManager {
         sendConsumerReport(HelmHidDescriptor.CONSUMER_RELEASE_ALL)
     }
 
-    fun sendMouseReport(payload: ByteArray): Boolean =
+    fun sendMouseReport(payload: ByteArray) =
         sendReport(HelmHidDescriptor.REPORT_ID_MOUSE, payload)
 
-    fun sendKeyboardReport(payload: ByteArray): Boolean =
+    fun sendKeyboardReport(payload: ByteArray) =
         sendReport(HelmHidDescriptor.REPORT_ID_KEYBOARD, payload)
 
-    fun sendConsumerReport(payload: ByteArray): Boolean =
+    fun sendConsumerReport(payload: ByteArray) =
         sendReport(HelmHidDescriptor.REPORT_ID_CONSUMER, payload)
 
-    private fun sendReport(reportId: Int, payload: ByteArray): Boolean {
-        val hid = hidDevice ?: return false
-        val device = connectedDevice ?: return false
-        return hid.sendReport(device, reportId, payload)
+    /**
+     * Fire-and-forget. The proxy and host are captured at post time so a
+     * report queued before stop() still reaches the host that was current
+     * when it was sent, even though stop() clears the fields right away.
+     */
+    private fun sendReport(reportId: Int, payload: ByteArray) {
+        val hid = hidDevice ?: return
+        val device = connectedDevice ?: return
+        sendHandler.post { hid.sendReport(device, reportId, payload) }
     }
 
-    /** Full teardown: neutralize the host, unregister, close the proxy. */
+    /**
+     * Full teardown: neutralize the host, unregister, close the proxy.
+     * The Bluetooth calls are posted behind the release-all reports on the
+     * send queue, so the releases are transmitted before the link drops.
+     * Local state is cleared immediately so nothing new gets queued.
+     */
     fun stop() {
         releaseAll()
+        val hid = hidDevice
+        val device = connectedDevice
+        val a = adapter
         starting = false
         pendingConnectAddress = null
-        connectedDevice?.let { hidDevice?.disconnect(it) }
-        hidDevice?.unregisterApp()
         registered = false
         connectedDevice = null
-        adapter?.closeProfileProxy(BluetoothProfile.HID_DEVICE, hidDevice)
         hidDevice = null
+        if (hid != null) {
+            sendHandler.post {
+                device?.let { hid.disconnect(it) }
+                hid.unregisterApp()
+                a?.closeProfileProxy(BluetoothProfile.HID_DEVICE, hid)
+            }
+        }
         post(State.DISCONNECTED)
     }
 }

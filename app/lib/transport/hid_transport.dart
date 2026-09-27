@@ -35,10 +35,19 @@ class HidTransport implements InputSink {
   final _state = StreamController<SinkState>.broadcast();
   StreamSubscription<SinkState>? _stateSubscription;
 
-  // Latest-wins coalescing: motion accumulates here and flushes once per
-  // microtask; button/key events flush immediately (never dropped).
+  // Throttled coalescing: motion accumulates here and goes out as at most
+  // one report per [_motionInterval] (ADR-010, ADR-011). An unthrottled
+  // per-sample stream starves A2DP audio sharing the radio; so does bursting
+  // several reports back-to-back in one flush, which is why a flush sends
+  // only one ±127-clamped report and carries any remainder into the next
+  // window rather than splitting (see _flushMotion). The first move after
+  // idle still flushes on the next microtask. Button/key events are never
+  // throttled.
+  static const _motionInterval = Duration(milliseconds: 15); // ~66 Hz
   int _pendingDx = 0, _pendingDy = 0, _pendingWheel = 0, _pendingPan = 0;
   bool _flushScheduled = false;
+  // Non-null while inside the throttle window opened by the last flush.
+  Timer? _motionWindow;
   int _buttons = 0;
 
   // Host-mode estimate so repeated gestures don't undo themselves — the
@@ -114,6 +123,8 @@ class HidTransport implements InputSink {
   /// Neutralizes the host: all buttons and keys up. Called on disconnect,
   /// app pause, and any gesture abort (stuck-key prevention).
   Future<void> releaseAll() async {
+    _motionWindow?.cancel();
+    _motionWindow = null;
     _pendingDx = _pendingDy = _pendingWheel = _pendingPan = 0;
     _buttons = 0;
     await _sendMouse(mouseReleaseAll());
@@ -139,7 +150,12 @@ class HidTransport implements InputSink {
         _scheduleFlush();
       case ButtonEvent(:final button, :final down):
         if (down) _resetHostModes();
-        _flushMotion(); // preserve ordering: motion before the click edge
+        // Preserve ordering: ALL pending motion before the click edge, not
+        // just one throttled tick's worth — otherwise motion from before
+        // the edge could arrive after it carrying the new button state (a
+        // drag's tail end continuing to move with the button released, or
+        // pre-click hover motion turning a plain click into a drag).
+        _flushAllMotion();
         final bit = switch (button) {
           Button.left => buttonLeftBit,
           Button.right => buttonRightBit,
@@ -207,7 +223,7 @@ class HidTransport implements InputSink {
   }
 
   void _scheduleFlush() {
-    if (_flushScheduled) return;
+    if (_flushScheduled || _motionWindow != null) return;
     _flushScheduled = true;
     scheduleMicrotask(() {
       _flushScheduled = false;
@@ -216,6 +232,45 @@ class HidTransport implements InputSink {
   }
 
   void _flushMotion() {
+    if (_pendingDx == 0 &&
+        _pendingDy == 0 &&
+        _pendingWheel == 0 &&
+        _pendingPan == 0) {
+      return;
+    }
+    // Never send more than one mouse report per flush. A fast swipe can
+    // accumulate beyond ±127 in a single window; splitting that into
+    // several reports fired back-to-back (encodeMouseReports) bursted onto
+    // the radio and made Bluetooth audio coexistence *worse* than the old
+    // one-report-per-touch-sample stream did, even though the average
+    // report rate is lower (ADR-011). Clamp to one report and carry the
+    // remainder into the next window instead — no distance is lost, an
+    // extreme flick just catches up over a couple more ticks.
+    final dx = _pendingDx.clamp(-127, 127);
+    final dy = _pendingDy.clamp(-127, 127);
+    final wheel = _pendingWheel.clamp(-127, 127);
+    final pan = _pendingPan.clamp(-127, 127);
+    _pendingDx -= dx;
+    _pendingDy -= dy;
+    _pendingWheel -= wheel;
+    _pendingPan -= pan;
+    _sendMouse(
+        encodeMouseReport(buttons: _buttons, dx: dx, dy: dy, wheel: wheel, pan: pan));
+    _motionWindow?.cancel();
+    _motionWindow = Timer(_motionInterval, () {
+      _motionWindow = null;
+      _flushMotion();
+    });
+  }
+
+  /// Drains ALL pending motion immediately, as however many reports it
+  /// takes (never holding any back) — used only for the button-edge
+  /// ordering guarantee in [send]. This can burst several reports at once,
+  /// but only at a click boundary, which is rare; unlike a continuous
+  /// swipe, it doesn't reintroduce the continuous back-to-back bursting
+  /// ADR-011 fixed. Cancels the throttle window: nothing is left pending
+  /// for it to pick up, and the next motion event opens a fresh one.
+  void _flushAllMotion() {
     if (_pendingDx == 0 &&
         _pendingDy == 0 &&
         _pendingWheel == 0 &&
@@ -233,6 +288,8 @@ class HidTransport implements InputSink {
     for (final report in reports) {
       _sendMouse(report);
     }
+    _motionWindow?.cancel();
+    _motionWindow = null;
   }
 
   Future<void> _sendMouse(Uint8List payload) =>
@@ -247,6 +304,13 @@ class HidTransport implements InputSink {
       .catchError((_) {});
 
   Future<void> dispose() async {
+    _motionWindow?.cancel();
+    _motionWindow = null;
+    // A flush already scheduled via scheduleMicrotask (send() called just
+    // before dispose()) can't be cancelled, but it checks these for zero
+    // before sending anything, so zeroing them here makes that stray flush
+    // a no-op instead of sending one last report after disposal.
+    _pendingDx = _pendingDy = _pendingWheel = _pendingPan = 0;
     await _stateSubscription?.cancel();
     await _state.close();
   }
