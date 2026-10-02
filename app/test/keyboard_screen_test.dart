@@ -189,4 +189,42 @@ void main() {
     final field = tester.widget<TextField>(find.byType(TextField));
     expect(field.controller!.text, isEmpty);
   });
+
+  group('auto-repeat', () {
+    Future<void> hold(WidgetTester tester, Finder key, Duration d) async {
+      final g = await tester.startGesture(tester.getCenter(key));
+      await tester.pump(d);
+      await g.up();
+      await tester.pump();
+    }
+
+    testWidgets('holding backspace repeats it until release', (tester) async {
+      final sink = FakeSink();
+      await pumpKeyboard(tester, sink, us);
+      await hold(tester, find.byKey(const ValueKey('nav-backspace')),
+          const Duration(milliseconds: 900));
+      final held = sink.downUsages.length;
+      expect(held, greaterThan(3));
+      expect(sink.downUsages.toSet(), {Usage.backspace});
+      await tester.pump(const Duration(seconds: 1));
+      expect(sink.downUsages.length, held, reason: 'stops on release');
+    });
+
+    testWidgets('a quick tap still sends exactly one', (tester) async {
+      final sink = FakeSink();
+      await pumpKeyboard(tester, sink, us);
+      await tester.tap(find.byKey(const ValueKey('nav-backspace')));
+      await tester.pump(const Duration(seconds: 1));
+      expect(sink.downUsages, [Usage.backspace]);
+    });
+
+    testWidgets('holding an arrow repeats it', (tester) async {
+      final sink = FakeSink();
+      await pumpKeyboard(tester, sink, us);
+      await hold(tester, find.byKey(const ValueKey('nav-left')),
+          const Duration(milliseconds: 900));
+      expect(sink.downUsages.length, greaterThan(3));
+      expect(sink.downUsages.toSet(), {Usage.arrowLeft});
+    });
+  });
 }

@@ -6,6 +6,7 @@ import '../hid/keymap.dart';
 import '../hid/laser_shortcuts.dart';
 import '../hid/layouts.dart';
 import '../hid/shortcut_tables.dart';
+import '../presenter/presenter_host.dart';
 import 'motion_diagnostics_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
@@ -106,6 +107,21 @@ class SettingsScreen extends StatelessWidget {
                 value: model.showImeKeys,
                 onChanged: model.setShowImeKeys,
               ),
+            ListTile(
+              title: const Text('Keep screen awake'),
+              subtitle: const Text(
+                  'Stops the phone dimming while you use these modes'),
+              trailing: DropdownButton<KeepAwake>(
+                value: model.keepAwake,
+                onChanged: (value) {
+                  if (value != null) model.setKeepAwake(value);
+                },
+                items: [
+                  for (final value in KeepAwake.values)
+                    DropdownMenuItem(value: value, child: Text(value.label)),
+                ],
+              ),
+            ),
             const Divider(),
             const ListTile(
               title: Text('Presenter'),

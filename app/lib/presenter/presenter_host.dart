@@ -9,9 +9,28 @@ import 'package:flutter/services.dart';
 
 enum VolumeKey { up, down }
 
+/// Which control modes hold the screen on. Presenter is the default: a phone
+/// that dims out mid-talk pauses the app and stops the motion sensors.
+enum KeepAwake {
+  none('None'),
+  trackpad('Trackpad'),
+  presenter('Presenter'),
+  both('Both');
+
+  const KeepAwake(this.label);
+
+  final String label;
+
+  bool appliesTo({required bool presenting}) => switch (this) {
+        KeepAwake.none => false,
+        KeepAwake.trackpad => !presenting,
+        KeepAwake.presenter => presenting,
+        KeepAwake.both => true,
+      };
+}
+
 abstract interface class PresenterHost {
-  /// Keeps the screen on. A phone that dims out pauses the app, which stops
-  /// the motion sensors mid-talk.
+  /// Keeps the screen on; see [KeepAwake] for when the app asks for it.
   Future<void> setKeepScreenOn(bool on);
 
   /// While captured, the volume keys are delivered on [volumeKeys] instead of

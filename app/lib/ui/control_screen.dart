@@ -19,7 +19,8 @@ class ControlScreen extends StatefulWidget {
   State<ControlScreen> createState() => _ControlScreenState();
 }
 
-class _ControlScreenState extends State<ControlScreen> {
+class _ControlScreenState extends State<ControlScreen>
+    with WidgetsBindingObserver {
   bool _keyboardVisible = false;
   bool _presenterVisible = false;
 
@@ -77,8 +78,36 @@ class _ControlScreenState extends State<ControlScreen> {
     _syncSystemUi(MediaQuery.orientationOf(context));
   }
 
+  bool _keepingAwake = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  // The native side clears the flag whenever the app pauses (MainActivity),
+  // so coming back has to ask for it again.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && _keepingAwake) {
+      widget.model.presenterHost.setKeepScreenOn(true);
+    }
+  }
+
+  /// Holds the screen on when the setting covers the mode on show. Called
+  /// from build so a settings change or mode toggle takes effect at once.
+  void _syncKeepAwake(AppModel model) {
+    final want = model.keepAwake.appliesTo(presenting: _presenterVisible);
+    if (want == _keepingAwake) return;
+    _keepingAwake = want;
+    model.presenterHost.setKeepScreenOn(want);
+  }
+
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    if (_keepingAwake) widget.model.presenterHost.setKeepScreenOn(false);
     // Leaving this screen (back to the device list) restores both bars,
     // regardless of which orientation the phone was left in.
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual,
@@ -162,6 +191,7 @@ class _ControlScreenState extends State<ControlScreen> {
   @override
   Widget build(BuildContext context) {
     final model = widget.model;
+    _syncKeepAwake(model);
     final capabilities = model.sink.capabilities;
     final hasPointer = capabilities.contains(Capability.pointer);
     final showKeyboard =

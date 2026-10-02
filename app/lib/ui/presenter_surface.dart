@@ -159,7 +159,6 @@ class _PresenterSurfaceState extends State<PresenterSurface>
     _attached = true;
     _session.attach();
     _syncClutch();
-    widget.host.setKeepScreenOn(true);
     _syncVolumeKeys();
   }
 
@@ -167,7 +166,6 @@ class _PresenterSurfaceState extends State<PresenterSurface>
     if (!_attached) return;
     _attached = false;
     _session.detach();
-    widget.host.setKeepScreenOn(false);
     _volumeKeySub?.cancel();
     _volumeKeySub = null;
     widget.host.setVolumeKeysCaptured(false);

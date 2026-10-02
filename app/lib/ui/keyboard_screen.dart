@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:material_symbols_icons/symbols.dart';
 
@@ -248,6 +250,7 @@ class _KeyboardScreenState extends State<KeyboardScreen> {
             icon: Icons.backspace,
             tooltip: 'Backspace',
             onTap: () => _sendStroke(Usage.backspace, Mod.none),
+            repeat: true,
           ),
         'nav-enter' => _Key(
             key: const ValueKey('nav-enter'),
@@ -260,24 +263,28 @@ class _KeyboardScreenState extends State<KeyboardScreen> {
             icon: Symbols.arrow_left_alt,
             tooltip: 'Left',
             onTap: () => _sendStroke(Usage.arrowLeft, Mod.none),
+            repeat: true,
           ),
         'nav-up' => _Key(
             key: const ValueKey('nav-up'),
             icon: Symbols.arrow_upward_alt,
             tooltip: 'Up',
             onTap: () => _sendStroke(Usage.arrowUp, Mod.none),
+            repeat: true,
           ),
         'nav-down' => _Key(
             key: const ValueKey('nav-down'),
             icon: Symbols.arrow_downward_alt,
             tooltip: 'Down',
             onTap: () => _sendStroke(Usage.arrowDown, Mod.none),
+            repeat: true,
           ),
         'nav-right' => _Key(
             key: const ValueKey('nav-right'),
             icon: Symbols.arrow_right_alt,
             tooltip: 'Right',
             onTap: () => _sendStroke(Usage.arrowRight, Mod.none),
+            repeat: true,
           ),
         _ => throw ArgumentError('unknown fixed key id: $id'),
       };
@@ -378,7 +385,7 @@ class _KeyboardScreenState extends State<KeyboardScreen> {
 /// The one key style used across modifier, navigation, and media rows.
 /// Modifiers pass [active] to render latched (filled) state. An icon key
 /// needs [tooltip] naming it — unlike a text label, the glyph alone doesn't.
-class _Key extends StatelessWidget {
+class _Key extends StatefulWidget {
   const _Key({
     super.key,
     this.label,
@@ -387,6 +394,7 @@ class _Key extends StatelessWidget {
     this.caption,
     required this.onTap,
     this.active = false,
+    this.repeat = false,
   })  : assert(label != null || icon != null),
         assert(caption == null || icon != null,
             'caption prints below the icon; it needs one to sit under');
@@ -402,8 +410,43 @@ class _Key extends StatelessWidget {
   final VoidCallback onTap;
   final bool active;
 
+  /// Holding the key past the long-press delay repeats [onTap] until release,
+  /// like a physical key's auto-repeat. A quick tap still fires once.
+  final bool repeat;
+
+  @override
+  State<_Key> createState() => _KeyState();
+}
+
+class _KeyState extends State<_Key> {
+  static const _repeatInterval = Duration(milliseconds: 40);
+
+  Timer? _repeatTimer;
+
+  void _startRepeat() {
+    _stopRepeat();
+    widget.onTap();
+    _repeatTimer = Timer.periodic(_repeatInterval, (_) => widget.onTap());
+  }
+
+  void _stopRepeat() {
+    _repeatTimer?.cancel();
+    _repeatTimer = null;
+  }
+
+  @override
+  void dispose() {
+    _stopRepeat();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
+    final label = widget.label;
+    final icon = widget.icon;
+    final caption = widget.caption;
+    final tooltip = widget.tooltip;
+    final active = widget.active;
     final scheme = Theme.of(context).colorScheme;
     final fg = active ? scheme.onPrimaryContainer : scheme.onSurface;
     final Widget content;
@@ -415,7 +458,7 @@ class _Key extends StatelessWidget {
           Icon(icon, size: 16, color: fg),
           const SizedBox(height: 2),
           Text(
-            caption!,
+            caption,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(fontSize: 9, color: fg),
@@ -430,24 +473,32 @@ class _Key extends StatelessWidget {
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: TextStyle(
-          fontSize: label!.length > 2 ? 14 : 18,
+          fontSize: label.length > 2 ? 14 : 18,
           fontWeight: active ? FontWeight.w600 : FontWeight.w400,
           color: fg,
         ),
       );
     }
-    final key = SizedBox(
-      height: 44,
-      child: Material(
-        color: active ? scheme.primaryContainer : scheme.surfaceContainerHigh,
-        borderRadius: BorderRadius.circular(10),
-        child: InkWell(
+    // InkWell reports neither tap-up nor cancel once a long press has won, so
+    // release is read off the raw pointer.
+    final key = Listener(
+      onPointerUp: (_) => _stopRepeat(),
+      onPointerCancel: (_) => _stopRepeat(),
+      child: SizedBox(
+        height: 44,
+        child: Material(
+          color:
+              active ? scheme.primaryContainer : scheme.surfaceContainerHigh,
           borderRadius: BorderRadius.circular(10),
-          onTap: onTap,
-          child: Center(child: content),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(10),
+            onTap: widget.onTap,
+            onLongPress: widget.repeat ? _startRepeat : null,
+            child: Center(child: content),
+          ),
         ),
       ),
     );
-    return tooltip != null ? Tooltip(message: tooltip!, child: key) : key;
+    return tooltip != null ? Tooltip(message: tooltip, child: key) : key;
   }
 }
