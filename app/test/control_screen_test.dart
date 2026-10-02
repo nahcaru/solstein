@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:helm/app_model.dart';
+import 'package:helm/presenter/presenter_host.dart';
 import 'package:helm/ui/control_screen.dart';
 import 'package:helm/ui/keyboard_screen.dart';
 import 'package:helm/ui/presenter_surface.dart';
@@ -15,6 +16,7 @@ void main() {
   const hidChannel = MethodChannel('dev.taira.helm/hid');
   const stateChannel = MethodChannel('dev.taira.helm/hid_state');
   late AppModel model;
+  late FakePresenterHost presenterHost;
 
   setUp(() {
     SharedPreferences.setMockInitialValues({});
@@ -22,9 +24,10 @@ void main() {
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
     messenger.setMockMethodCallHandler(hidChannel, (_) async => null);
     messenger.setMockMethodCallHandler(stateChannel, (_) async => null);
+    presenterHost = FakePresenterHost();
     model = AppModel(
       motionSource: FakeMotionSource(),
-      presenterHost: FakePresenterHost(),
+      presenterHost: presenterHost,
     );
   });
 
@@ -54,6 +57,92 @@ void main() {
 
   Widget app() => MaterialApp(home: ControlScreen(model: model));
   Finder settings() => find.widgetWithIcon(IconButton, Icons.settings);
+
+  group('keep awake', () {
+    Future<void> toggleMode(WidgetTester tester) async {
+      await tester.tap(find.byTooltip('Presenter').evaluate().isNotEmpty
+          ? find.byTooltip('Presenter')
+          : find.byTooltip('Trackpad'));
+      await tester.pump();
+    }
+
+    testWidgets('default: awake only in Presenter', (tester) async {
+      portrait(tester);
+      await tester.pumpWidget(app());
+      expect(presenterHost.keepScreenOn, isFalse);
+      await toggleMode(tester);
+      expect(presenterHost.keepScreenOn, isTrue);
+      await toggleMode(tester);
+      expect(presenterHost.keepScreenOn, isFalse);
+    });
+
+    testWidgets('Trackpad setting: awake only in Trackpad', (tester) async {
+      portrait(tester);
+      await model.setKeepAwake(KeepAwake.trackpad);
+      await tester.pumpWidget(app());
+      expect(presenterHost.keepScreenOn, isTrue);
+      await toggleMode(tester);
+      expect(presenterHost.keepScreenOn, isFalse);
+    });
+
+    testWidgets('Both: awake in either mode', (tester) async {
+      portrait(tester);
+      await model.setKeepAwake(KeepAwake.both);
+      await tester.pumpWidget(app());
+      expect(presenterHost.keepScreenOn, isTrue);
+      await toggleMode(tester);
+      expect(presenterHost.keepScreenOn, isTrue);
+    });
+
+    testWidgets('None: never awake', (tester) async {
+      portrait(tester);
+      await model.setKeepAwake(KeepAwake.none);
+      await tester.pumpWidget(app());
+      await toggleMode(tester);
+      expect(presenterHost.keepScreenOn, isFalse);
+    });
+
+    testWidgets('is asked for again after the app resumes', (tester) async {
+      portrait(tester);
+      await model.setKeepAwake(KeepAwake.both);
+      await tester.pumpWidget(app());
+      // MainActivity clears the native flag on pause.
+      await presenterHost.setKeepScreenOn(false);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pump();
+      expect(presenterHost.keepScreenOn, isTrue);
+    });
+
+    testWidgets('leaving the screen releases it', (tester) async {
+      portrait(tester);
+      await model.setKeepAwake(KeepAwake.both);
+      await tester.pumpWidget(app());
+      expect(presenterHost.keepScreenOn, isTrue);
+      await tester.pumpWidget(const SizedBox());
+      expect(presenterHost.keepScreenOn, isFalse);
+    });
+
+    testWidgets('changing it in Settings applies on return', (tester) async {
+      portrait(tester);
+      await tester.pumpWidget(app());
+      expect(presenterHost.keepScreenOn, isFalse);
+      await tester.tap(settings());
+      await tester.pumpAndSettle();
+      final dropdown = find.byType(DropdownButton<KeepAwake>);
+      await tester.scrollUntilVisible(dropdown, 200);
+      await tester.ensureVisible(dropdown);
+      await tester.pumpAndSettle();
+      await tester.tap(dropdown);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Trackpad').last);
+      await tester.pumpAndSettle();
+      expect(model.keepAwake, KeepAwake.trackpad);
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+      expect(presenterHost.keepScreenOn, isTrue);
+    });
+  });
 
   testWidgets('portrait keeps the app bar with the header buttons', (
     tester,

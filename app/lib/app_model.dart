@@ -154,6 +154,9 @@ class AppModel extends ChangeNotifier {
   /// Volume up/down act as Prev/Next while presenting.
   bool volumeKeys = true;
 
+  /// Which control modes keep the screen on.
+  KeepAwake keepAwake = KeepAwake.presenter;
+
   /// Which slideshow app's built-in laser the Laser button toggles.
   DeckApp deckApp = DeckApp.powerpoint;
 
@@ -189,6 +192,7 @@ class AppModel extends ChangeNotifier {
   static const _kMotionClutch = 'motionClutch';
   static const _kVolumeKeys = 'volumeKeys';
   static const _kDeckApp = 'deckApp';
+  static const _kKeepAwake = 'keepAwake';
 
   Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
@@ -208,6 +212,10 @@ class AppModel extends ChangeNotifier {
     motionAccel = (prefs.getDouble(_kMotionAccel) ?? 1.15).clamp(1.0, 1.6);
     motionClutch = prefs.getBool(_kMotionClutch) ?? true;
     volumeKeys = prefs.getBool(_kVolumeKeys) ?? true;
+    final awake = prefs.getInt(_kKeepAwake);
+    keepAwake = awake != null && awake >= 0 && awake < KeepAwake.values.length
+        ? KeepAwake.values[awake]
+        : KeepAwake.presenter;
     final deck = prefs.getInt(_kDeckApp);
     deckApp = deck != null && deck >= 0 && deck < DeckApp.values.length
         ? DeckApp.values[deck]
@@ -301,6 +309,13 @@ class AppModel extends ChangeNotifier {
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_kVolumeKeys, value);
+  }
+
+  Future<void> setKeepAwake(KeepAwake value) async {
+    keepAwake = value;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_kKeepAwake, value.index);
   }
 
   Future<void> setDeckApp(DeckApp app) async {

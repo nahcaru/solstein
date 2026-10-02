@@ -391,13 +391,6 @@ void main() {
   });
 
   group('hands-free', () {
-    testWidgets('keeps the screen on only while presenting', (tester) async {
-      await tester.pumpWidget(host());
-      expect(presenterHost.keepScreenOn, isTrue);
-      await tester.pumpWidget(const SizedBox());
-      expect(presenterHost.keepScreenOn, isFalse);
-    });
-
     testWidgets('volume up/down are Prev/Next while captured', (tester) async {
       await tester.pumpWidget(host());
       expect(presenterHost.volumeKeysCaptured, isTrue);
@@ -445,12 +438,10 @@ void main() {
       await tester.pumpWidget(host());
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
       await tester.pump();
-      expect(presenterHost.keepScreenOn, isFalse);
       expect(presenterHost.volumeKeysCaptured, isFalse);
 
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
       await tester.pump();
-      expect(presenterHost.keepScreenOn, isTrue);
       expect(presenterHost.volumeKeysCaptured, isTrue);
       presenterHost.press(VolumeKey.down);
       expect(sink.events.whereType<KeyInput>(), isNotEmpty);
@@ -530,7 +521,6 @@ void main() {
       expect(session.engine.engaged, isFalse,
           reason: 'scrolling a settings list must not move the cursor');
       expect(presenterHost.volumeKeysCaptured, isFalse);
-      expect(presenterHost.keepScreenOn, isFalse);
       expect(source.running, isFalse);
 
       await tester.pumpWidget(host(clutch: false));
