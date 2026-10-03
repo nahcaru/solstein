@@ -29,6 +29,7 @@ Control a Mac with nothing installed on it.
       layouts (French, German, Thai, Arabic, etc.) deferred by design until
       someone has a real host to verify against (see ADR-007)
 - [ ] Onboarding, haptics, theming; Play Store release
+- [ ] Media control mode (ADR-012): a couch-remote surface (play/pause, prev/next, volume and mute buttons) beside Trackpad and Presenter, with the phone's volume keys driving the host's volume. Implemented and unit-tested; still to verify on a phone against macOS, Windows and Linux (see the architecture checklist).
 - [x] Presenter / laser-pointer mode over HID (ADR-008, ADR-009): gyro pointing with a hold-to-move clutch, ballistics, tremor smoothing, Prev/Next/Click, haptics, volume keys, screen kept on, motion diagnostics. Verified on a Pixel 7a with one host.
 - [ ] Presenter: verify the Laser button's shortcuts (PowerPoint Ctrl/⌘+L, Google Slides L, Keynote C) in real slideshows; tune the smoothing, ballistics and `countsPerRadian` defaults on a phone; check the other OSes.
 - [ ] Presenter with true absolute pointing. A second Mouse collection in the HID descriptor broke the host's mouse buttons (ADR-008), so this waits for the v2 helper (native injection) unless a Digitizer-based report is proven on real hosts.

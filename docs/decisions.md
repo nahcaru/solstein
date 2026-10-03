@@ -336,3 +336,36 @@ A *throttled* flush now sends **at most one** report: the pending deltas are cla
 
 - Very fast flicks lag the finger by up to a couple of throttle ticks (~30 ms) before the pointer catches up, rather than jumping the full distance in one 15 ms step. Confirmed on hardware: pointer motion is smoother and Bluetooth audio contention is markedly better than both the pre-ADR-010 baseline and this ADR's first version.
 - A click or drag release with a large backlog queued (a fast flick immediately followed by lifting the finger) can still burst several reports at once via `_flushAllMotion()` — rare enough, and discrete enough, not to matter for audio coexistence.
+
+---
+
+## ADR-012: Media control mode — a third surface, phone volume keys, Dart-driven repeat
+
+**Status**: Accepted
+**Date**: 2026-10-03
+
+### Context
+
+Media keys were reachable only from a small row in the keyboard drawer. The goal is a couch remote: large targets for play/pause, previous/next and volume, usable without looking, with the phone's own volume rocker controlling the computer's volume. The Consumer Control report (ID 3) already existed, so this is a UI and phone-side change.
+
+### Decision
+
+- **A third mode, not a second boolean.** `ControlMode { trackpad, presenter, media }` replaces `_presenterVisible`; the header offers one mode menu whose entries are gated on sink capabilities. Two flags could be true at once.
+- **Volume as buttons**, with hold-to-repeat at the backspace pace (`KeyRepeater`, 40 ms after the long-press delay). HID consumer controls have no absolute level, so a slider would only be a disguised repeat gesture.
+- **Hardware volume keys are captured while Media shows**, reusing the Presenter capture. The native side previously reported only the first DOWN, so it now also reports the release. Repeat is driven from Dart rather than from Android's key auto-repeat, so on-screen and hardware volume repeat identically.
+- **Not gated by the Presenter "Volume keys" setting.** Volume control is the point of this mode.
+- **Keep-awake** gains a Media option, appended so saved indices keep their meaning.
+
+### Alternatives Considered
+
+- **A separate pushed screen** (like Settings): loses the shared keyboard drawer and keep-awake wiring, and is inconsistent with Presenter.
+- **Use Android's repeatCount events for hardware repeat:** its delay and rate are the OS's, so they would differ from the on-screen buttons.
+- **Brightness on the remote:** not a couch control; it stays on the keyboard row.
+
+### Consequences
+
+- The Presenter event stream changed type (`VolumeKeyEvent` with `pressed`); Presenter filters to presses.
+- Each `MediaTap` is a self-contained press and release, so nothing is ever left held on the host; backgrounding or covering the surface only has to stop the Dart-side repeat, which it does.
+- Volume-key capture is released in `deactivate()`, not `dispose()`, in both Presenter and Media. When the mode changes, the incoming surface's `initState` runs before the outgoing one's `dispose`, so a release in `dispose` landed last and switched the capture off.
+- Verified by unit and widget tests only so far; on-device verification is on the roadmap.
+

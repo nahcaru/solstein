@@ -7,8 +7,8 @@
 │ Flutter Client (app/) — Android v0.1, iOS v3│
 │                                             │
 │  UI: TrackpadSurface · PresenterSurface ·   │
-│      KeyboardScreen · PairingScreen ·       │
-│      Settings                               │
+│      MediaSurface · KeyboardScreen ·        │
+│      PairingScreen · Settings               │
 │   ↓ raw PointerEvents    ↓ gyro + accel     │
 │  Gesture Engine        Motion Engine        │
 │  (pure Dart)           (pure Dart)          │
@@ -72,6 +72,16 @@ The design follows how a presentation remote works (research note: Logicool Spot
 
 Rationale and rejected alternatives: ADR-008 (HID), ADR-009 (presenter design).
 
+### Media control mode
+
+`MediaSurface` is the third pointer-area surface, picked from the app bar's mode menu (`ControlMode`: trackpad, presenter, media; an entry appears only if the sink declares the capability it needs, `Capability.mediaKeys` for media). It sends `MediaTap` through the existing Consumer Control report (ID 3), so there is no descriptor, protocol or Kotlin transport change.
+
+- **Buttons** fire on pointer-down. Volume down/up repeat while held via `KeyRepeater` (`ui/key_repeat.dart`), which uses the same pace as a held backspace: a long-press delay, then every `kKeyRepeatInterval` (40 ms).
+- **Hardware volume keys** are captured while the surface is showing and drive the host's volume instead of the phone's. `PresenterBridge` now also reports the key's release (`up:release` / `down:release`) so Dart can start and stop the repeat; Presenter ignores releases and behaves as before. Capture is dropped when Settings covers the surface, on pause and on leaving the mode.
+- **Keep-awake** has a Media option; the persisted index order is unchanged (`Media` was appended).
+
+Rationale: ADR-012.
+
 ### Transports
 - **`HidTransport`** (v0.1): Dart side of a MethodChannel; Kotlin module owns `BluetoothHidDevice` (`registerApp` → callbacks → `sendReport`) inside a foreground service (`connectedDevice`). Collapses `GesturePhase` events into shortcut key reports at `ended && progress ≥ 0.5`. Spec: `hid-descriptor.md`.
 - **`BleTransport`** (v2): phone-side GATT server. Forwards phases verbatim. Spec: `protocol.md`.
@@ -108,4 +118,5 @@ Shared Dart core (BLE central, protocol decode, tray UI, per-OS gesture config) 
     romaji becomes 日本語 without touching the host (spot-check Korean, Pinyin) →
     a character the layout can't produce (ñ on US) is refused visibly, and the
     next backspace deletes the right character.
+  - **Media** (no re-pairing needed): Mode menu › Media → play/pause, previous and next control a player on the host → mute toggles → holding volume up/down ramps the host's volume at the same pace as a held backspace and stops on lift → the phone's volume rocker moves the host's volume and the phone's own volume UI does not appear → open Settings, or leave Media: the rocker moves the phone's volume again → background the app while holding the rocker: the host volume stops changing → Presenter's rocker still steps one slide per press.
   - **Presenter** (no re-pairing needed; first confirm the **trackpad tap still clicks** — a descriptor change once broke it, ADR-008): pad released → shaking the phone moves nothing; hold the pad → the cursor follows → tapping Click/Next does not nudge the cursor → slow motion is fine, a quick flick reaches far → hold still 5 s, no creep → roll the phone 45° and sweep horizontally, still horizontal → Prev/Next step slides in Keynote, PowerPoint and Google Slides → haptic on each button → the screen does not dim while presenting → volume up/down = Prev/Next, and normal volume again after leaving → **Laser** toggles the built-in laser in each app (PowerPoint Ctrl/⌘+L, Google Slides L, Keynote C with its pointer preference on; correct `laser_shortcuts.dart` where one is wrong) → background the app mid-click: no stuck button → Settings › Motion sensors: ~100 Hz, Recalibrate settles the bias. If motion is inverted, flip both negations in `MotionEngine._glide`.

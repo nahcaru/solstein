@@ -69,8 +69,9 @@ class _PresenterSurfaceState extends State<PresenterSurface>
     with WidgetsBindingObserver {
   StreamSubscription<Object>? _errors;
   StreamSubscription<MotionSample>? _recovered;
-  StreamSubscription<VolumeKey>? _volumeKeySub;
+  StreamSubscription<VolumeKeyEvent>? _volumeKeySub;
   bool _attached = false;
+  bool _capturingVolume = false;
   bool _padHeld = false;
   String? _sensorError;
   late final Future<bool> _amplitudeSupported = Vibration.hasAmplitudeControl();
@@ -166,8 +167,31 @@ class _PresenterSurfaceState extends State<PresenterSurface>
     if (!_attached) return;
     _attached = false;
     _session.detach();
+    _releaseVolumeKeys();
+  }
+
+  // The capture is dropped as soon as this element is deactivated, not
+  // left to dispose: when the mode changes, the incoming surface's initState
+  // runs before this one's dispose, so a release in dispose would land after
+  // (and undo) the new surface's capture.
+  @override
+  void deactivate() {
+    _releaseVolumeKeys();
+    super.deactivate();
+  }
+
+  // Reparenting under a GlobalKey (rotation) deactivates then reactivates.
+  @override
+  void activate() {
+    super.activate();
+    if (_attached) _syncVolumeKeys();
+  }
+
+  void _releaseVolumeKeys() {
     _volumeKeySub?.cancel();
     _volumeKeySub = null;
+    if (!_capturingVolume) return;
+    _capturingVolume = false;
     widget.host.setVolumeKeysCaptured(false);
   }
 
@@ -176,11 +200,13 @@ class _PresenterSurfaceState extends State<PresenterSurface>
   void _syncVolumeKeys() {
     _volumeKeySub?.cancel();
     _volumeKeySub = null;
+    _capturingVolume = widget.volumeKeys;
     widget.host.setVolumeKeysCaptured(widget.volumeKeys);
     if (!widget.volumeKeys) return;
-    _volumeKeySub = widget.host.volumeKeys.listen((key) {
+    _volumeKeySub = widget.host.volumeKeys.listen((event) {
+      if (!event.pressed) return;
       _buzz(_tap);
-      _tapKey(key == VolumeKey.up ? Usage.pageUp : Usage.pageDown);
+      _tapKey(event.key == VolumeKey.up ? Usage.pageUp : Usage.pageDown);
     });
   }
 

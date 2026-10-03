@@ -34,8 +34,10 @@ class VolumeKeysTest {
     }
 
     @Test
-    fun releaseEdgeEmitsNothing() {
-        assertNull(VolumeKeys.decide(true, up, released, 0).emit)
+    fun releaseEdgeEmitsItsDirectionWithARelease() {
+        // Media mode repeats a held key until it sees this.
+        assertEquals("up:release", VolumeKeys.decide(true, up, released, 0).emit)
+        assertEquals("down:release", VolumeKeys.decide(true, down, released, 0).emit)
     }
 
     @Test

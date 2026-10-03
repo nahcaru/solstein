@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:helm/app_model.dart';
 import 'package:helm/hid/keymap.dart';
 import 'package:helm/hid/shortcut_tables.dart';
+import 'package:helm/presenter/presenter_host.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -63,5 +64,35 @@ void main() {
     final restored = AppModel();
     await restored.load();
     expect(restored.showImeKeys, isTrue);
+  });
+
+  test('keep-awake indices saved by earlier builds keep their meaning',
+      () async {
+    // Persisted by index, so adding Media must not shift the older values.
+    for (final (index, expected) in [
+      (0, KeepAwake.none),
+      (1, KeepAwake.trackpad),
+      (2, KeepAwake.presenter),
+      (3, KeepAwake.both),
+    ]) {
+      SharedPreferences.setMockInitialValues({'keepAwake': index});
+      final model = AppModel();
+      await model.load();
+      expect(model.keepAwake, expected);
+    }
+  });
+
+  test('Media keep-awake persists, and an unknown index falls back', () async {
+    final model = AppModel();
+    await model.load();
+    await model.setKeepAwake(KeepAwake.media);
+    final restored = AppModel();
+    await restored.load();
+    expect(restored.keepAwake, KeepAwake.media);
+
+    SharedPreferences.setMockInitialValues({'keepAwake': 99});
+    final fallback = AppModel();
+    await fallback.load();
+    expect(fallback.keepAwake, KeepAwake.presenter);
   });
 }

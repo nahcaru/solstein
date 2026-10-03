@@ -4,7 +4,7 @@ import 'package:helm/presenter/presenter_host.dart';
 
 /// Records what presenter mode asks of the phone and lets a test press keys.
 class FakePresenterHost implements PresenterHost {
-  final _keys = StreamController<VolumeKey>.broadcast(sync: true);
+  final _keys = StreamController<VolumeKeyEvent>.broadcast(sync: true);
   bool keepScreenOn = false;
   bool volumeKeysCaptured = false;
   final calls = <String>[];
@@ -22,7 +22,10 @@ class FakePresenterHost implements PresenterHost {
   }
 
   @override
-  Stream<VolumeKey> get volumeKeys => _keys.stream;
+  Stream<VolumeKeyEvent> get volumeKeys => _keys.stream;
 
-  void press(VolumeKey key) => _keys.add(key);
+  void press(VolumeKey key) => _keys.add(VolumeKeyEvent(key, pressed: true));
+
+  void release(VolumeKey key) =>
+      _keys.add(VolumeKeyEvent(key, pressed: false));
 }

@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../app_model.dart';
+import '../core/control_mode.dart';
 import '../core/input_sink.dart';
 import 'keyboard_screen.dart';
+import 'media_surface.dart';
 import 'presenter_surface.dart';
 import 'settings_screen.dart';
 import 'trackpad_surface.dart';
@@ -22,7 +24,7 @@ class ControlScreen extends StatefulWidget {
 class _ControlScreenState extends State<ControlScreen>
     with WidgetsBindingObserver {
   bool _keyboardVisible = false;
-  bool _presenterVisible = false;
+  ControlMode _mode = ControlMode.trackpad;
 
   /// Settings is pushed over this screen; the presenter underneath must go
   /// quiet while it is open.
@@ -36,9 +38,9 @@ class _ControlScreenState extends State<ControlScreen>
   // and can throw when the finger lifts against an already-disposed pad
   // (_PadButtonState in presenter_surface.dart). A GlobalKey lets Flutter
   // find and reparent the existing Element across the two shapes instead.
-  // (It doesn't defeat the *intentional* dispose when _presenterVisible
-  // toggles the surface's type between TrackpadSurface and
-  // PresenterSurface — a GlobalKey only preserves identity when the widget
+  // (It doesn't defeat the *intentional* dispose when _mode toggles the
+  // surface's type between TrackpadSurface, PresenterSurface and
+  // MediaSurface — a GlobalKey only preserves identity when the widget
   // type at that key is unchanged.)
   final _pointerSurfaceKey = GlobalKey();
   final _keyboardKey = GlobalKey();
@@ -97,8 +99,8 @@ class _ControlScreenState extends State<ControlScreen>
 
   /// Holds the screen on when the setting covers the mode on show. Called
   /// from build so a settings change or mode toggle takes effect at once.
-  void _syncKeepAwake(AppModel model) {
-    final want = model.keepAwake.appliesTo(presenting: _presenterVisible);
+  void _syncKeepAwake(AppModel model, ControlMode? mode) {
+    final want = mode != null && model.keepAwake.appliesTo(mode);
     if (want == _keepingAwake) return;
     _keepingAwake = want;
     model.presenterHost.setKeepScreenOn(want);
@@ -131,16 +133,51 @@ class _ControlScreenState extends State<ControlScreen>
         onPressed: model.closeControl,
       );
 
+  static const _modeIcons = {
+    ControlMode.trackpad: Icons.touch_app,
+    ControlMode.presenter: Icons.ads_click,
+    ControlMode.media: Icons.music_note,
+  };
+
+  static const _modeLabels = {
+    ControlMode.trackpad: 'Trackpad',
+    ControlMode.presenter: 'Presenter',
+    ControlMode.media: 'Media',
+  };
+
+  /// Modes the sink can serve. Gated on capabilities, never on the transport.
+  List<ControlMode> _availableModes(Set<Capability> capabilities) => [
+        if (capabilities.contains(Capability.pointer)) ...[
+          ControlMode.trackpad,
+          ControlMode.presenter,
+        ],
+        if (capabilities.contains(Capability.mediaKeys)) ControlMode.media,
+      ];
+
+  /// The mode actually showing: the chosen one if the sink can still serve
+  /// it, else the first it can (null if it serves none).
+  ControlMode? _effectiveMode(Set<Capability> capabilities) {
+    final modes = _availableModes(capabilities);
+    if (modes.contains(_mode)) return _mode;
+    return modes.isEmpty ? null : modes.first;
+  }
+
   List<Widget> _headerActions(AppModel model, Set<Capability> capabilities) =>
       [
-        if (capabilities.contains(Capability.pointer))
-          IconButton(
-            icon: Icon(
-              _presenterVisible ? Icons.touch_app : Icons.ads_click,
-            ),
-            tooltip: _presenterVisible ? 'Trackpad' : 'Presenter',
-            onPressed: () =>
-                setState(() => _presenterVisible = !_presenterVisible),
+        if (_availableModes(capabilities).length > 1)
+          PopupMenuButton<ControlMode>(
+            icon: Icon(_modeIcons[_effectiveMode(capabilities)]),
+            tooltip: 'Mode',
+            initialValue: _effectiveMode(capabilities),
+            onSelected: (mode) => setState(() => _mode = mode),
+            itemBuilder: (_) => [
+              for (final mode in _availableModes(capabilities))
+                CheckedPopupMenuItem(
+                  value: mode,
+                  checked: mode == _effectiveMode(capabilities),
+                  child: Text(_modeLabels[mode]!),
+                ),
+            ],
           ),
         if (capabilities.contains(Capability.keyboard))
           IconButton(
@@ -158,26 +195,34 @@ class _ControlScreenState extends State<ControlScreen>
         ),
       ];
 
-  Widget _pointerSurface(AppModel model) => Padding(
+  Widget _pointerSurface(AppModel model, ControlMode mode) => Padding(
         padding: const EdgeInsets.all(12),
-        child: _presenterVisible
-            ? PresenterSurface(
-                key: _pointerSurfaceKey,
-                sink: model.sink,
-                session: model.motion,
-                host: model.presenterHost,
-                clutch: model.motionClutch,
-                volumeKeys: model.volumeKeys,
-                laser: model.laserStroke,
-                active: !_covered,
-                hapticsEnabled: model.hapticsEnabled,
-              )
-            : TrackpadSurface(
-                key: _pointerSurfaceKey,
-                sink: model.sink,
-                config: model.gestureConfig,
-                hapticsEnabled: model.hapticsEnabled,
-              ),
+        child: switch (mode) {
+          ControlMode.presenter => PresenterSurface(
+              key: _pointerSurfaceKey,
+              sink: model.sink,
+              session: model.motion,
+              host: model.presenterHost,
+              clutch: model.motionClutch,
+              volumeKeys: model.volumeKeys,
+              laser: model.laserStroke,
+              active: !_covered,
+              hapticsEnabled: model.hapticsEnabled,
+            ),
+          ControlMode.media => MediaSurface(
+              key: _pointerSurfaceKey,
+              sink: model.sink,
+              host: model.presenterHost,
+              active: !_covered,
+              hapticsEnabled: model.hapticsEnabled,
+            ),
+          ControlMode.trackpad => TrackpadSurface(
+              key: _pointerSurfaceKey,
+              sink: model.sink,
+              config: model.gestureConfig,
+              hapticsEnabled: model.hapticsEnabled,
+            ),
+        },
       );
 
   Widget _keyboard(AppModel model) => KeyboardScreen(
@@ -191,9 +236,9 @@ class _ControlScreenState extends State<ControlScreen>
   @override
   Widget build(BuildContext context) {
     final model = widget.model;
-    _syncKeepAwake(model);
     final capabilities = model.sink.capabilities;
-    final hasPointer = capabilities.contains(Capability.pointer);
+    final mode = _effectiveMode(capabilities);
+    _syncKeepAwake(model, mode);
     final showKeyboard =
         _keyboardVisible && capabilities.contains(Capability.keyboard);
 
@@ -223,8 +268,11 @@ class _ControlScreenState extends State<ControlScreen>
                   builder: (context, _) => Row(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      if (hasPointer)
-                        Expanded(flex: 55, child: _pointerSurface(model)),
+                      if (mode != null)
+                        Expanded(
+                          flex: 55,
+                          child: _pointerSurface(model, mode),
+                        ),
                       if (showKeyboard)
                         Expanded(
                           flex: 45,
@@ -252,7 +300,8 @@ class _ControlScreenState extends State<ControlScreen>
         listenable: model,
         builder: (context, _) => Column(
           children: [
-            if (hasPointer) Expanded(child: _pointerSurface(model)),
+            if (mode != null)
+              Expanded(child: _pointerSurface(model, mode)),
             if (showKeyboard) _keyboard(model),
           ],
         ),
