@@ -6,6 +6,7 @@ import 'engine/gesture_config.dart';
 import 'hid/keymap.dart';
 import 'hid/laser_shortcuts.dart';
 import 'hid/layouts.dart';
+import 'hid/player_shortcuts.dart';
 import 'hid/shortcut_tables.dart';
 import 'motion/motion_config.dart';
 import 'motion/motion_session.dart';
@@ -324,6 +325,10 @@ class AppModel extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_kDeckApp, app.index);
   }
+
+  /// The Media mode seek/captions/fullscreen keys for the host layout, or
+  /// null when the layout lacks a letter they need (the row is hidden).
+  PlayerShortcuts? get playerKeys => playerShortcuts(hostLayout);
 
   /// The Laser button's keystroke for the current app and computer, or null
   /// when that app has none there (the button is then hidden).

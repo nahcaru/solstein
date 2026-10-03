@@ -3,6 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:helm/core/input_event.dart';
 import 'package:helm/core/input_sink.dart';
+import 'package:helm/hid/keymap.dart';
+import 'package:helm/hid/layouts.dart';
+import 'package:helm/hid/player_shortcuts.dart';
 import 'package:helm/presenter/presenter_host.dart';
 import 'package:helm/ui/key_repeat.dart';
 import 'package:helm/ui/media_surface.dart';
@@ -37,13 +40,15 @@ void main() {
     host = FakePresenterHost();
   });
 
-  Widget surface({bool active = true}) => MaterialApp(
+  Widget surface({bool active = true, PlayerShortcuts? player}) =>
+      MaterialApp(
         home: Scaffold(
           body: MediaSurface(
             sink: sink,
             host: host,
             active: active,
             hapticsEnabled: false,
+            player: player,
           ),
         ),
       );
@@ -82,6 +87,55 @@ void main() {
       await tester.pump(kLongPressTimeout + kKeyRepeatInterval * 5);
       await g.up();
       expect(keys(), [MediaKey.playPause]);
+    });
+  });
+
+  group('player keys', () {
+    final shortcuts = playerShortcuts(hostLayouts.values.first);
+
+    List<InputEvent> keyEvents() =>
+        sink.events.whereType<KeyInput>().toList();
+
+    testWidgets('are hidden without a player', (tester) async {
+      await tester.pumpWidget(surface());
+      for (final t in ['Seek back', 'Seek forward', 'Captions', 'Fullscreen']) {
+        expect(button(t), findsNothing, reason: t);
+      }
+    });
+
+    for (final (tooltip, pick) in <(String, KeyStroke Function(PlayerShortcuts))>[
+      ('Seek back', (s) => s.back),
+      ('Seek forward', (s) => s.forward),
+      ('Captions', (s) => s.captions),
+      ('Fullscreen', (s) => s.fullscreen),
+    ]) {
+      testWidgets('$tooltip taps its key once', (tester) async {
+        await tester.pumpWidget(surface(player: shortcuts));
+        await tester.tap(button(tooltip));
+        await tester.pump(kLongPressTimeout * 2);
+        final stroke = pick(shortcuts!);
+        expect(keyEvents(), [
+          KeyInput(stroke.usage, stroke.modifiers, down: true),
+          KeyInput(stroke.usage, stroke.modifiers, down: false),
+        ]);
+      });
+    }
+
+    testWidgets('holding Seek does not repeat', (tester) async {
+      await tester.pumpWidget(surface(player: shortcuts));
+      final g = await tester.startGesture(tester.getCenter(button('Seek back')));
+      await tester.pump(kLongPressTimeout + kKeyRepeatInterval * 5);
+      await g.up();
+      expect(keyEvents().length, 2);
+    });
+
+    testWidgets('lay out in a landscape phone', (tester) async {
+      tester.view.physicalSize = const Size(2400, 1080);
+      tester.view.devicePixelRatio = 3.0;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(surface(player: shortcuts));
+      expect(tester.takeException(), isNull);
+      expect(button('Fullscreen'), findsOneWidget);
     });
   });
 

@@ -215,6 +215,11 @@ class _ControlScreenState extends State<ControlScreen>
               host: model.presenterHost,
               active: !_covered,
               hapticsEnabled: model.hapticsEnabled,
+              // The keys are ordinary keyboard strokes, so they need that
+              // capability; without it the row is simply absent.
+              player: model.sink.capabilities.contains(Capability.keyboard)
+                  ? model.playerKeys
+                  : null,
             ),
           ControlMode.trackpad => TrackpadSurface(
               key: _pointerSurfaceKey,
