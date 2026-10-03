@@ -367,5 +367,46 @@ Media keys were reachable only from a small row in the keyboard drawer. The goal
 - The Presenter event stream changed type (`VolumeKeyEvent` with `pressed`); Presenter filters to presses.
 - Each `MediaTap` is a self-contained press and release, so nothing is ever left held on the host; backgrounding or covering the surface only has to stop the Dart-side repeat, which it does.
 - Volume-key capture is released in `deactivate()`, not `dispose()`, in both Presenter and Media. When the mode changes, the incoming surface's `initState` runs before the outgoing one's `dispose`, so a release in `dispose` landed last and switched the capture off.
-- Verified by unit and widget tests only so far; on-device verification is on the roadmap.
+- Verified on a phone after implementation.
+- The play button shows a fixed combined play/pause icon, not the current state: HID is one-way, so the phone cannot read whether the host is playing, and a guess from its own taps would go wrong whenever something else changes the state (the keyboard, a video ending, another app).
 
+---
+
+## ADR-013: Media player keys — seek, captions, fullscreen as one fixed key set
+
+**Status**: Accepted (not yet tried on a phone)
+**Date**: 2026-10-04
+
+### Context
+
+A couch remote also needs to jump back and forward, toggle captions and go fullscreen. The Consumer Control page has no usage for any of these, and there is no way to ask the host what is playing, so the phone cannot tell which player is open.
+
+### Decision
+
+Send ordinary key strokes, as four buttons in a row under the playback buttons: **←, →, C and F**. This is the largest set common to the major web players, checked against each vendor's own shortcut page:
+
+| Player | ← / → | C captions | F fullscreen | Source |
+|---|---|---|---|---|
+| YouTube | seek 5 s | yes | yes | support.google.com/youtube/answer/7631406 |
+| Netflix | seek 10 s | **no key** | yes | help.netflix.com/en/node/24855 |
+| Prime Video | seek 10 s | yes | yes | amazon.com/gp/help/customer/display.html?nodeId=GH5GWCRVQCKEEFM8 |
+
+- **Arrows, not J / L.** YouTube's J / L seek 10 s, but Netflix's and Prime Video's shortcut pages list no J / L; the arrows work in all three.
+- **No player setting.** An earlier version chose between a J / L set and an arrow set; with J / L dropped the two were identical, so the setting and its persistence were removed.
+- **Seek, captions and fullscreen do not repeat when held**, unlike volume: at the 40 ms backspace pace a held seek would jump minutes in a second.
+- **The buttons say "Seek", not "10 s"**, since the step is the player's.
+- **The row needs `Capability.keyboard`**, and is hidden when the host layout cannot type C or F.
+
+The research was delegated to Antigravity and then checked against the vendor pages: several of its URLs and some of its rows were wrong (a dead Netflix link, unsupported claims for QuickTime, Hulu and Windows media apps), so only rows confirmed on the vendor's own page are used.
+
+### Alternatives Considered
+
+- **A per-player setting (YouTube / Arrow keys / VLC / ...).** Needed only for players whose keys differ. VLC (Shift = 5 s, Alt = 10 s, Ctrl = 1 min + arrow; V cycles subtitles; per wiki.videolan.org/Hotkeys/) and Spotify (Shift + arrow) are the known examples. Not built until someone wants one; the setting can be re-added with a second key set.
+- **Detect the player.** Not possible from a HID peripheral.
+- **Per-OS keys.** The three web players use the same keys on every OS.
+
+### Consequences
+
+- On Netflix the Captions button does nothing; on VLC the seek buttons do nothing useful.
+- Mac-native players (QuickTime, Apple TV app) and mpv/IINA are not verified here and may or may not respond to the same keys.
+- A now-playing display remains out of reach until the v2 helper (roadmap).

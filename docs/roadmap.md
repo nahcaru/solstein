@@ -29,7 +29,8 @@ Control a Mac with nothing installed on it.
       layouts (French, German, Thai, Arabic, etc.) deferred by design until
       someone has a real host to verify against (see ADR-007)
 - [ ] Onboarding, haptics, theming; Play Store release
-- [ ] Media control mode (ADR-012): a couch-remote surface (play/pause, prev/next, volume and mute buttons) beside Trackpad and Presenter, with the phone's volume keys driving the host's volume. Implemented and unit-tested; still to verify on a phone against macOS, Windows and Linux (see the architecture checklist).
+- [x] Media control mode (ADR-012): a couch-remote surface (play/pause, prev/next, volume and mute buttons) beside Trackpad and Presenter, with the phone's volume keys driving the host's volume. Verified on a phone.
+- [ ] Media player keys (ADR-013): seek back/forward (←/→), captions (C) and fullscreen (F) buttons in Media mode. The key set is confirmed against YouTube's, Netflix's and Prime Video's own shortcut pages; still to try on a phone. Players that differ (VLC: Shift/Alt/Ctrl + arrow, V for subtitles; Spotify: Shift + arrow) would need a second key set and a way to choose it — not built.
 - [x] Presenter / laser-pointer mode over HID (ADR-008, ADR-009): gyro pointing with a hold-to-move clutch, ballistics, tremor smoothing, Prev/Next/Click, haptics, volume keys, screen kept on, motion diagnostics. Verified on a Pixel 7a with one host.
 - [ ] Presenter: verify the Laser button's shortcuts (PowerPoint Ctrl/⌘+L, Google Slides L, Keynote C) in real slideshows; tune the smoothing, ballistics and `countsPerRadian` defaults on a phone; check the other OSes.
 - [ ] Presenter with true absolute pointing. A second Mouse collection in the HID descriptor broke the host's mouse buttons (ADR-008), so this waits for the v2 helper (native injection) unless a Digitizer-based report is proven on real hosts.
@@ -41,6 +42,7 @@ Control a Mac with nothing installed on it.
       packets → native Unicode injection (replaces the clipboard-paste idea)
 - [ ] Flutter desktop helper in `helper/`: macOS (CGEvent + Accessibility onboarding) → Windows (SendInput) → Linux (uinput + udev rule)
 - [ ] Helper-side gesture→action config per OS/DE
+- [ ] Now-playing display in Media mode (title, artist, position). HID is one-way, so a peripheral cannot read what the host is playing; this needs the helper to read the OS's media session (e.g. SMTC on Windows, MPRIS on Linux; macOS has no public API for other apps' now-playing info) and send it over BLE. Until then Media mode is a remote with no display.
 
 ## v2+ — Stretch: Tier 3 interactive gestures (macOS)
 

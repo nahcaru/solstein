@@ -368,7 +368,7 @@ class _KeyboardScreenState extends State<KeyboardScreen> {
             _Key(icon: Icons.brightness_low, onTap: () => _media(MediaKey.brightnessDown)),
             _Key(icon: Icons.brightness_high, onTap: () => _media(MediaKey.brightnessUp)),
             _Key(icon: Icons.skip_previous, onTap: () => _media(MediaKey.prevTrack)),
-            _Key(icon: Icons.play_arrow, onTap: () => _media(MediaKey.playPause)),
+            _Key(icon: Symbols.play_pause, onTap: () => _media(MediaKey.playPause)),
             _Key(icon: Icons.skip_next, onTap: () => _media(MediaKey.nextTrack)),
             _Key(icon: Icons.volume_off, onTap: () => _media(MediaKey.mute)),
             _Key(icon: Icons.volume_down, onTap: () => _media(MediaKey.volumeDown)),

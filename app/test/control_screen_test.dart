@@ -3,7 +3,9 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:helm/app_model.dart';
 import 'package:helm/core/control_mode.dart';
+import 'package:helm/core/input_event.dart';
 import 'package:helm/core/input_sink.dart';
+import 'package:helm/hid/keymap.dart';
 import 'package:helm/presenter/presenter_host.dart';
 import 'package:helm/transport/hid_transport.dart';
 import 'package:helm/ui/control_screen.dart';
@@ -15,6 +17,20 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'support/fake_motion_source.dart';
 import 'support/fake_presenter_host.dart';
+
+/// Records what the screen sends, to check which keys a button produced.
+class _RecordingTransport extends HidTransport {
+  final events = <InputEvent>[];
+
+  @override
+  void send(InputEvent event) => events.add(event);
+}
+
+/// A host with media keys only: no pointer, no keyboard.
+class _MediaOnlyTransport extends HidTransport {
+  @override
+  Set<Capability> get capabilities => const {Capability.mediaKeys};
+}
 
 /// A host with media keys but no pointer.
 class _NoPointerTransport extends HidTransport {
@@ -418,6 +434,88 @@ void main() {
       await selectMode(tester, 'Trackpad');
       expect(find.byType(TrackpadSurface), findsOneWidget);
       await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('shows the player row (seek, captions, fullscreen)', (
+      tester,
+    ) async {
+      portrait(tester);
+      await tester.pumpWidget(app());
+      await selectMode(tester, 'Media');
+      for (final t in ['Seek back', 'Seek forward', 'Captions', 'Fullscreen']) {
+        expect(find.byTooltip(t), findsOneWidget, reason: t);
+      }
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('no keyboard capability, no player row', (tester) async {
+      portrait(tester);
+      model = AppModel(
+        transport: _MediaOnlyTransport(),
+        motionSource: FakeMotionSource(),
+        presenterHost: presenterHost,
+      );
+      await tester.pumpWidget(app());
+      expect(find.byType(MediaSurface), findsOneWidget);
+      expect(find.byTooltip('Seek back'), findsNothing);
+      expect(find.byTooltip('Play/Pause'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    group('player buttons send the arrow, C and F keys', () {
+      late _RecordingTransport transport;
+
+      setUp(() {
+        transport = _RecordingTransport();
+        model = AppModel(
+          transport: transport,
+          motionSource: FakeMotionSource(),
+          presenterHost: presenterHost,
+        );
+      });
+
+      Future<List<InputEvent>> tapAndRecord(
+        WidgetTester tester,
+        String tooltip,
+      ) async {
+        portrait(tester);
+        await tester.pumpWidget(app());
+        await selectMode(tester, 'Media');
+        transport.events.clear();
+        await tester.tap(find.byTooltip(tooltip));
+        await tester.pump();
+        final sent = List<InputEvent>.of(transport.events);
+        await tester.pumpWidget(const SizedBox());
+        return sent;
+      }
+
+      testWidgets('Fullscreen is F', (tester) async {
+        expect(await tapAndRecord(tester, 'Fullscreen'), [
+          const KeyInput(0x09, Mod.none, down: true),
+          const KeyInput(0x09, Mod.none, down: false),
+        ]);
+      });
+
+      testWidgets('Captions is C', (tester) async {
+        expect(await tapAndRecord(tester, 'Captions'), [
+          const KeyInput(0x06, Mod.none, down: true),
+          const KeyInput(0x06, Mod.none, down: false),
+        ]);
+      });
+
+      testWidgets('Seek back is ←', (tester) async {
+        expect(await tapAndRecord(tester, 'Seek back'), [
+          const KeyInput(Usage.arrowLeft, Mod.none, down: true),
+          const KeyInput(Usage.arrowLeft, Mod.none, down: false),
+        ]);
+      });
+
+      testWidgets('Seek forward is →', (tester) async {
+        expect(await tapAndRecord(tester, 'Seek forward'), [
+          const KeyInput(Usage.arrowRight, Mod.none, down: true),
+          const KeyInput(Usage.arrowRight, Mod.none, down: false),
+        ]);
+      });
     });
 
     testWidgets('keeps the keyboard drawer available', (tester) async {

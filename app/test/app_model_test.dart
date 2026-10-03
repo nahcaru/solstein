@@ -95,4 +95,12 @@ void main() {
     await fallback.load();
     expect(fallback.keepAwake, KeepAwake.presenter);
   });
+
+  test('player keys follow the host layout', () async {
+    final model = AppModel();
+    await model.load();
+    final keys = model.playerKeys!;
+    expect(keys.back.usage, Usage.arrowLeft);
+    expect(keys.forward.usage, Usage.arrowRight);
+  });
 }

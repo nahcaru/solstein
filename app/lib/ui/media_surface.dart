@@ -1,10 +1,13 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:material_symbols_icons/symbols.dart';
 import 'package:vibration/vibration.dart';
 
 import '../core/input_event.dart';
 import '../core/input_sink.dart';
+import '../hid/keymap.dart';
+import '../hid/player_shortcuts.dart';
 import '../presenter/presenter_host.dart';
 import 'key_repeat.dart';
 import 'trackpad_surface.dart' show fireHaptic, hapticForClick;
@@ -22,6 +25,7 @@ class MediaSurface extends StatefulWidget {
     required this.host,
     required this.active,
     required this.hapticsEnabled,
+    this.player,
   });
 
   final InputSink sink;
@@ -31,6 +35,9 @@ class MediaSurface extends StatefulWidget {
   /// back to the phone.
   final bool active;
   final bool hapticsEnabled;
+
+  /// Keys for the seek, captions and fullscreen row; null hides the row.
+  final PlayerShortcuts? player;
 
   @override
   State<MediaSurface> createState() => _MediaSurfaceState();
@@ -55,6 +62,11 @@ class _MediaSurfaceState extends State<MediaSurface>
   }
 
   void _send(MediaKey key) => widget.sink.send(MediaTap(key));
+
+  void _tapStroke(KeyStroke stroke) {
+    widget.sink.send(KeyInput(stroke.usage, stroke.modifiers, down: true));
+    widget.sink.send(KeyInput(stroke.usage, stroke.modifiers, down: false));
+  }
 
   @override
   void initState() {
@@ -162,11 +174,23 @@ class _MediaSurfaceState extends State<MediaSurface>
         ),
       );
 
+  Widget _strokeButton(String tooltip, IconData icon, KeyStroke stroke) =>
+      Expanded(
+        child: _MediaButton(
+          tooltip: tooltip,
+          icon: icon,
+          iconSize: 32,
+          repeat: false,
+          onPress: _buzz,
+          onFire: () => _tapStroke(stroke),
+        ),
+      );
+
   @override
   Widget build(BuildContext context) {
     final transport = [
       _button('Previous', Icons.skip_previous, MediaKey.prevTrack),
-      _button('Play/Pause', Icons.play_arrow, MediaKey.playPause,
+      _button('Play/Pause', Symbols.play_pause, MediaKey.playPause,
           iconSize: 56, flex: 2),
       _button('Next', Icons.skip_next, MediaKey.nextTrack),
     ];
@@ -176,6 +200,15 @@ class _MediaSurfaceState extends State<MediaSurface>
       _button('Mute', Icons.volume_off, MediaKey.mute),
       _button('Volume up', Icons.volume_up, MediaKey.volumeUp, repeat: true),
     ];
+    final player = widget.player;
+    final playerRow = player == null
+        ? null
+        : [
+            _strokeButton('Captions', Icons.closed_caption, player.captions),
+            _strokeButton('Seek back', Icons.fast_rewind, player.back),
+            _strokeButton('Seek forward', Icons.fast_forward, player.forward),
+            _strokeButton('Fullscreen', Icons.fullscreen, player.fullscreen),
+          ];
     const gap = 12.0;
 
     Widget row(List<Widget> buttons) => Row(
@@ -191,11 +224,24 @@ class _MediaSurfaceState extends State<MediaSurface>
     return LayoutBuilder(
       builder: (context, constraints) {
         final wide = constraints.maxWidth > constraints.maxHeight;
+        // Playback on top, the optional player row under it, volume last.
         if (wide) {
           return Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Expanded(flex: 3, child: row(transport)),
+              Expanded(
+                flex: 3,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Expanded(flex: 3, child: row(transport)),
+                    if (playerRow != null) ...[
+                      const SizedBox(height: gap),
+                      Expanded(flex: 2, child: row(playerRow)),
+                    ],
+                  ],
+                ),
+              ),
               const SizedBox(width: gap),
               Expanded(flex: 2, child: row(volume)),
             ],
@@ -205,6 +251,10 @@ class _MediaSurfaceState extends State<MediaSurface>
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Expanded(flex: 3, child: row(transport)),
+            if (playerRow != null) ...[
+              const SizedBox(height: gap),
+              Expanded(flex: 2, child: row(playerRow)),
+            ],
             const SizedBox(height: gap),
             Expanded(flex: 2, child: row(volume)),
           ],
