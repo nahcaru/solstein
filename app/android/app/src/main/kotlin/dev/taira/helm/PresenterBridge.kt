@@ -20,8 +20,10 @@ object VolumeKeys {
     /**
      * Both the DOWN and the UP of a volume key are consumed while captured —
      * letting either through would still show the system volume slider. Only
-     * the first DOWN of a press emits: holding the key auto-repeats, and a
-     * slide should advance once per press.
+     * the first DOWN of a press emits ("up"/"down"): holding the key
+     * auto-repeats, and a slide should advance once per press. The UP emits
+     * "up:release"/"down:release" so a consumer that repeats while held knows
+     * when to stop.
      */
     fun decide(captured: Boolean, keyCode: Int, action: Int, repeatCount: Int): Decision {
         if (!captured) return PASS
@@ -30,7 +32,11 @@ object VolumeKeys {
             KeyEvent.KEYCODE_VOLUME_DOWN -> "down"
             else -> return PASS
         }
-        val emit = if (action == KeyEvent.ACTION_DOWN && repeatCount == 0) name else null
+        val emit = when {
+            action == KeyEvent.ACTION_DOWN && repeatCount == 0 -> name
+            action == KeyEvent.ACTION_UP -> "$name:release"
+            else -> null
+        }
         return Decision(consume = true, emit = emit)
     }
 }

@@ -8,6 +8,7 @@ import '../core/input_sink.dart';
 import '../hid/ime_keys.dart';
 import '../hid/keymap.dart';
 import '../hid/shortcut_tables.dart';
+import 'key_repeat.dart';
 
 /// Keyboard input: a text field that forwards keystrokes (resolved through
 /// the host's keyboard layout), a 3×4 grid mixing modifiers in among
@@ -419,14 +420,12 @@ class _Key extends StatefulWidget {
 }
 
 class _KeyState extends State<_Key> {
-  static const _repeatInterval = Duration(milliseconds: 40);
-
   Timer? _repeatTimer;
 
   void _startRepeat() {
     _stopRepeat();
     widget.onTap();
-    _repeatTimer = Timer.periodic(_repeatInterval, (_) => widget.onTap());
+    _repeatTimer = Timer.periodic(kKeyRepeatInterval, (_) => widget.onTap());
   }
 
   void _stopRepeat() {

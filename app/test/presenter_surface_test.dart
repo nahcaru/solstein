@@ -404,6 +404,14 @@ void main() {
       ]);
     });
 
+    testWidgets('lifting a volume key does nothing', (tester) async {
+      await tester.pumpWidget(host());
+      presenterHost.press(VolumeKey.down);
+      sink.events.clear();
+      presenterHost.release(VolumeKey.down);
+      expect(sink.events, isEmpty);
+    });
+
     testWidgets('with the setting off, volume keys are left to the system',
         (tester) async {
       await tester.pumpWidget(host(volumeKeys: false));

@@ -2,15 +2,33 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:helm/app_model.dart';
+import 'package:helm/core/control_mode.dart';
+import 'package:helm/core/input_sink.dart';
 import 'package:helm/presenter/presenter_host.dart';
+import 'package:helm/transport/hid_transport.dart';
 import 'package:helm/ui/control_screen.dart';
 import 'package:helm/ui/keyboard_screen.dart';
+import 'package:helm/ui/media_surface.dart';
 import 'package:helm/ui/presenter_surface.dart';
 import 'package:helm/ui/trackpad_surface.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'support/fake_motion_source.dart';
 import 'support/fake_presenter_host.dart';
+
+/// A host with media keys but no pointer.
+class _NoPointerTransport extends HidTransport {
+  @override
+  Set<Capability> get capabilities =>
+      const {Capability.keyboard, Capability.mediaKeys};
+}
+
+/// A host that can move the pointer but has no Consumer Control report.
+class _NoMediaTransport extends HidTransport {
+  @override
+  Set<Capability> get capabilities =>
+      const {Capability.pointer, Capability.keyboard};
+}
 
 void main() {
   const hidChannel = MethodChannel('dev.taira.helm/hid');
@@ -58,12 +76,27 @@ void main() {
   Widget app() => MaterialApp(home: ControlScreen(model: model));
   Finder settings() => find.widgetWithIcon(IconButton, Icons.settings);
 
+  /// Opens the header's mode menu and picks [label] (Trackpad, Presenter or
+  /// Media).
+  Future<void> selectMode(WidgetTester tester, String label) async {
+    await tester.tap(find.byTooltip('Mode'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(
+      find.widgetWithText(CheckedPopupMenuItem<ControlMode>, label),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+  }
+
   group('keep awake', () {
+    var presenting = false;
+    setUp(() => presenting = false);
+
+    // Flips between Trackpad and Presenter.
     Future<void> toggleMode(WidgetTester tester) async {
-      await tester.tap(find.byTooltip('Presenter').evaluate().isNotEmpty
-          ? find.byTooltip('Presenter')
-          : find.byTooltip('Trackpad'));
-      await tester.pump();
+      presenting = !presenting;
+      await selectMode(tester, presenting ? 'Presenter' : 'Trackpad');
     }
 
     testWidgets('default: awake only in Presenter', (tester) async {
@@ -168,7 +201,7 @@ void main() {
     expect(find.byType(AppBar), findsNothing);
     for (final tooltip in [
       'Back to device list',
-      'Presenter',
+      'Mode',
       'Keyboard',
       'Settings',
     ]) {
@@ -240,8 +273,7 @@ void main() {
   ) async {
     landscape(tester);
     await tester.pumpWidget(app());
-    await tester.tap(find.byTooltip('Presenter'));
-    await tester.pump();
+    await selectMode(tester, 'Presenter');
     expect(find.byKey(const ValueKey('clutch')), findsOneWidget);
     expect(find.byType(TrackpadSurface), findsNothing);
     await tester.pumpWidget(const SizedBox());
@@ -259,8 +291,7 @@ void main() {
     // "setState() called after dispose()".
     portrait(tester);
     await tester.pumpWidget(app());
-    await tester.tap(find.byTooltip('Presenter'));
-    await tester.pump();
+    await selectMode(tester, 'Presenter');
 
     final clutch = find.byKey(const ValueKey('clutch'));
     final before = tester.state(find.byType(PresenterSurface));
@@ -345,8 +376,7 @@ void main() {
       await tester.pumpWidget(app());
       calls.clear();
 
-      await tester.tap(find.byTooltip('Presenter'));
-      await tester.pump();
+      await selectMode(tester, 'Presenter');
 
       expect(uiModeCalls(), isEmpty);
     });
@@ -367,6 +397,165 @@ void main() {
         uiModeCalls().single.arguments,
         containsAll(['SystemUiOverlay.top', 'SystemUiOverlay.bottom']),
       );
+    });
+  });
+  group('media mode', () {
+    testWidgets('the mode menu switches between all three surfaces', (
+      tester,
+    ) async {
+      portrait(tester);
+      await tester.pumpWidget(app());
+      expect(find.byType(TrackpadSurface), findsOneWidget);
+
+      await selectMode(tester, 'Media');
+      expect(find.byType(MediaSurface), findsOneWidget);
+      expect(find.byType(TrackpadSurface), findsNothing);
+
+      await selectMode(tester, 'Presenter');
+      expect(find.byType(PresenterSurface), findsOneWidget);
+      expect(find.byType(MediaSurface), findsNothing);
+
+      await selectMode(tester, 'Trackpad');
+      expect(find.byType(TrackpadSurface), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('keeps the keyboard drawer available', (tester) async {
+      portrait(tester);
+      await tester.pumpWidget(app());
+      await selectMode(tester, 'Media');
+      await tester.tap(find.byTooltip('Keyboard'));
+      await tester.pump();
+      expect(find.byType(KeyboardScreen), findsOneWidget);
+      expect(find.byType(MediaSurface), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('the phone volume keys are taken only while Media shows', (
+      tester,
+    ) async {
+      portrait(tester);
+      await tester.pumpWidget(app());
+      expect(presenterHost.volumeKeysCaptured, isFalse);
+      await selectMode(tester, 'Media');
+      expect(presenterHost.volumeKeysCaptured, isTrue);
+      await selectMode(tester, 'Trackpad');
+      expect(presenterHost.volumeKeysCaptured, isFalse);
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    // The incoming surface's initState runs before the outgoing one's
+    // dispose, so a naive release-in-dispose would undo the new capture.
+    testWidgets('Presenter → Media keeps the volume keys captured', (
+      tester,
+    ) async {
+      portrait(tester);
+      await tester.pumpWidget(app());
+      await selectMode(tester, 'Presenter');
+      expect(presenterHost.volumeKeysCaptured, isTrue);
+      await selectMode(tester, 'Media');
+      expect(presenterHost.volumeKeysCaptured, isTrue);
+      await tester.pumpWidget(const SizedBox());
+      expect(presenterHost.volumeKeysCaptured, isFalse);
+    });
+
+    testWidgets('Media → Presenter keeps the volume keys captured', (
+      tester,
+    ) async {
+      portrait(tester);
+      await tester.pumpWidget(app());
+      await selectMode(tester, 'Media');
+      await selectMode(tester, 'Presenter');
+      expect(presenterHost.volumeKeysCaptured, isTrue);
+      await tester.pumpWidget(const SizedBox());
+      expect(presenterHost.volumeKeysCaptured, isFalse);
+    });
+
+    testWidgets('rotating keeps the volume keys captured', (tester) async {
+      portrait(tester);
+      await tester.pumpWidget(app());
+      await selectMode(tester, 'Media');
+      landscape(tester);
+      await tester.pump();
+      expect(presenterHost.volumeKeysCaptured, isTrue);
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('rotating mid-press does not throw when the finger lifts', (
+      tester,
+    ) async {
+      portrait(tester);
+      await tester.pumpWidget(app());
+      await selectMode(tester, 'Media');
+      final gesture =
+          await tester.startGesture(tester.getCenter(find.byTooltip('Volume up')));
+      await tester.pump();
+      landscape(tester);
+      await tester.pump();
+      await gesture.up();
+      await tester.pump();
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('a sink with no pointer shows Media, with no menu', (
+      tester,
+    ) async {
+      portrait(tester);
+      model = AppModel(
+        transport: _NoPointerTransport(),
+        motionSource: FakeMotionSource(),
+        presenterHost: presenterHost,
+      );
+      await tester.pumpWidget(app());
+      expect(find.byType(MediaSurface), findsOneWidget);
+      expect(find.byType(TrackpadSurface), findsNothing);
+      expect(find.byTooltip('Mode'), findsNothing);
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('opening Settings gives the volume keys back', (tester) async {
+      portrait(tester);
+      await tester.pumpWidget(app());
+      await selectMode(tester, 'Media');
+      await tester.tap(settings());
+      await tester.pumpAndSettle();
+      expect(presenterHost.volumeKeysCaptured, isFalse);
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('Media keep-awake setting: awake only in Media', (
+      tester,
+    ) async {
+      portrait(tester);
+      await model.setKeepAwake(KeepAwake.media);
+      await tester.pumpWidget(app());
+      expect(presenterHost.keepScreenOn, isFalse);
+      await selectMode(tester, 'Media');
+      expect(presenterHost.keepScreenOn, isTrue);
+      await selectMode(tester, 'Presenter');
+      expect(presenterHost.keepScreenOn, isFalse);
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('without the Consumer Control report there is no Media entry', (
+      tester,
+    ) async {
+      portrait(tester);
+      model = AppModel(
+        transport: _NoMediaTransport(),
+        motionSource: FakeMotionSource(),
+        presenterHost: presenterHost,
+      );
+      await tester.pumpWidget(app());
+      await tester.tap(find.byTooltip('Mode'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.text('Presenter'), findsOneWidget);
+      expect(find.text('Media'), findsNothing);
+      await tester.tapAt(const Offset(5, 5)); // dismiss the menu
+      await tester.pump();
+      await tester.pumpWidget(const SizedBox());
     });
   });
 }

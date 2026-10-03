@@ -117,7 +117,14 @@ class SettingsScreen extends StatelessWidget {
                   if (value != null) model.setKeepAwake(value);
                 },
                 items: [
-                  for (final value in KeepAwake.values)
+                  // Display order; the persisted index order is separate.
+                  for (final value in const [
+                    KeepAwake.none,
+                    KeepAwake.trackpad,
+                    KeepAwake.presenter,
+                    KeepAwake.media,
+                    KeepAwake.both,
+                  ])
                     DropdownMenuItem(value: value, child: Text(value.label)),
                 ],
               ),
