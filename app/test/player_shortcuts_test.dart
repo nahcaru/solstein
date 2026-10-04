@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:helm/hid/keymap.dart';
-import 'package:helm/hid/layouts.dart';
-import 'package:helm/hid/player_shortcuts.dart';
+import 'package:solstein/hid/keymap.dart';
+import 'package:solstein/hid/layouts.dart';
+import 'package:solstein/hid/player_shortcuts.dart';
 
 void main() {
   // HID Keyboard/Keypad page usages: C = 0x06, F = 0x09. Letters sit at the

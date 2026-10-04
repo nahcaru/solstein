@@ -129,12 +129,12 @@ Predictable v2 milestone; Tier 3 fragility is contained behind a compatibility g
 
 HID transmits key positions, not characters — there is no usage code for 日. Yet
 device testing (2026-07-16, Pixel 7a → macOS) showed CJK already working in v0.1:
-pressing かな on the host and typing romaji through Helm produces 日本語, because
+pressing かな on the host and typing romaji through Solstein produces 日本語, because
 the *host's* IME does the conversion. Korean and Pinyin behave identically.
 
 ### Decision
 
-CJK input is the host IME's job. Helm sends romaji as ordinary usage codes, keeps
+CJK input is the host IME's job. Solstein sends romaji as ordinary usage codes, keeps
 its own field free of phone-side IME composition
 (`TextInputType.visiblePassword`), and offers かな/英数 (LANG1/LANG2 on macOS) so
 the phone can toggle the host IME. Characters no host layout can produce are
@@ -162,7 +162,7 @@ telling users to keep their phone keyboard in English (the counterintuitive part
 Anything the host layout cannot express is deferred to v2. Prior art agrees:
 Chromium's remoting protocol pairs a `usb_keycode` `KeyEvent` with a UTF-8
 `TextEvent` for "input method different from physical keyboards, including
-software keyboard" — the split Helm now mirrors across v1/v2.
+software keyboard" — the split Solstein now mirrors across v1/v2.
 
 ---
 
@@ -194,7 +194,7 @@ someone has a real host to test it against, not before.
 ### Consequences
 
 Non-US-non-JIS hosts (French, German, Thai, Arabic keyboards, etc.) aren't
-supported yet; typing on Helm against one of those layouts will send
+supported yet; typing on Solstein against one of those layouts will send
 US-positioned usage codes, matching pre-JIS v1 behavior for that host. Revisit
 per-layout, on demand, each as its own small verified addition — not a batch.
 
@@ -207,7 +207,7 @@ per-layout, on demand, each as its own small verified addition — not a batch.
 
 ### Context
 
-A presenter needs to point at the screen from across the room. Premium presenters (Logitech Spotlight and kin) do this with a hybrid: relative deltas while gliding, and direct absolute pointing while a spotlight button is held. Helm's event vocabulary had no absolute position, its descriptor had no absolute report, and its only motion source was the touchscreen.
+A presenter needs to point at the screen from across the room. Premium presenters (Logitech Spotlight and kin) do this with a hybrid: relative deltas while gliding, and direct absolute pointing while a spotlight button is held. Solstein's event vocabulary had no absolute position, its descriptor had no absolute report, and its only motion source was the touchscreen.
 
 ### Decision
 
@@ -293,7 +293,7 @@ With Bluetooth headphones playing music, moving the pointer broke up the audio. 
 ### Decision
 
 - **Throttled coalescing in `HidTransport`.** A single constant, `_motionInterval` = 15 ms (~66 Hz). The first move after idle still flushes on the next microtask, so the first move has no added latency. That flush opens a 15 ms window. Moves and scrolls inside the window accumulate and go out as one report when it closes, and the next window opens only if something was sent. Buttons, keys and media keys are never throttled. A click flushes *all* pending motion ahead of its edge (not just one throttled tick's worth — see ADR-011's second fix), and `releaseAll()` and `dispose()` cancel the pending window. (Superseded in one respect by ADR-011: a throttled flush now sends at most one report, not a split run of several.)
-- **A dedicated send thread in `HidManager`.** All `sendReport` calls are posted to one `HandlerThread` ("helm-hid-send"), which keeps mouse, keyboard and consumer reports in order. `disconnect()`, the host-switch path of `connect()`, and `stop()` post their Bluetooth teardown calls to the same queue, behind the release-all reports, so the releases are sent before the link drops.
+- **A dedicated send thread in `HidManager`.** All `sendReport` calls are posted to one `HandlerThread` ("solstein-hid-send"), which keeps mouse, keyboard and consumer reports in order. `disconnect()`, the host-switch path of `connect()`, and `stop()` post their Bluetooth teardown calls to the same queue, behind the release-all reports, so the releases are sent before the link drops.
 - **QoS stays best-effort.** `registerApp` still passes `null` QoS. Reserving bandwidth with `BluetoothHidDeviceAppQosSettings` would take guaranteed airtime from A2DP, which is the opposite of what we want.
 
 ### Alternatives Considered

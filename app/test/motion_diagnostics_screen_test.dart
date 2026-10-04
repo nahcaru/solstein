@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:helm/motion/motion_sample.dart';
-import 'package:helm/motion/motion_session.dart';
-import 'package:helm/ui/motion_diagnostics_screen.dart';
+import 'package:solstein/motion/motion_sample.dart';
+import 'package:solstein/motion/motion_session.dart';
+import 'package:solstein/ui/motion_diagnostics_screen.dart';
 
 import 'support/fake_motion_source.dart';
 

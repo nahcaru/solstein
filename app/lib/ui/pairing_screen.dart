@@ -61,7 +61,7 @@ class _PairingScreenState extends State<PairingScreen> {
     final state = widget.model.sinkState;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Helm'),
+        title: const Text('Solstein'),
         actions: [
           if (state == SinkState.error)
             IconButton(
@@ -105,7 +105,7 @@ class _PairingScreenState extends State<PairingScreen> {
                             padding: EdgeInsets.all(16),
                             child: Text(
                               'No connected computers.\n\n'
-                              'Not paired yet? Keep Helm open and pair this '
+                              'Not paired yet? Keep Solstein open and pair this '
                               'phone from the computer\'s Bluetooth settings '
                               '(it appears under the phone\'s own name).\n\n'
                               'Already paired? Connect to this phone from '
@@ -158,7 +158,7 @@ class _PermissionsPrompt extends StatelessWidget {
             const Icon(Icons.bluetooth_disabled, size: 56),
             const SizedBox(height: 16),
             const Text(
-              'Helm needs Bluetooth permissions to act as a trackpad '
+              'Solstein needs Bluetooth permissions to act as a trackpad '
               'and keyboard for your computer.',
               textAlign: TextAlign.center,
             ),

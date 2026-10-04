@@ -1,5 +1,5 @@
-name: helm
-description: "Bluetooth trackpad + keyboard for your computer — zero install on the host."
+name: solstein
+description: "Turn your phone into a Bluetooth trackpad"
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev

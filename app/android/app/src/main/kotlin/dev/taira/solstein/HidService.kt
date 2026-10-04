@@ -1,4 +1,4 @@
-package dev.taira.helm
+package dev.taira.solstein
 
 import android.app.Notification
 import android.app.NotificationChannel
@@ -51,7 +51,7 @@ class HidService : Service() {
                 CHANNEL_ID,
                 "HID session",
                 NotificationManager.IMPORTANCE_LOW,
-            ).apply { description = "Shown while Helm is acting as a trackpad/keyboard" }
+            ).apply { description = "Shown while Solstein is acting as a trackpad/keyboard" }
         )
         val contentIntent = PendingIntent.getActivity(
             this,
@@ -60,7 +60,7 @@ class HidService : Service() {
             PendingIntent.FLAG_IMMUTABLE,
         )
         return Notification.Builder(this, CHANNEL_ID)
-            .setContentTitle("Helm is active")
+            .setContentTitle("Solstein is active")
             .setContentText("Serving as Bluetooth trackpad & keyboard")
             .setSmallIcon(android.R.drawable.stat_sys_data_bluetooth)
             .setContentIntent(contentIntent)
@@ -69,7 +69,7 @@ class HidService : Service() {
     }
 
     companion object {
-        private const val CHANNEL_ID = "helm_hid"
+        private const val CHANNEL_ID = "solstein_hid"
         private const val NOTIFICATION_ID = 1
 
         fun start(context: Context) {
@@ -77,7 +77,7 @@ class HidService : Service() {
                 context.startForegroundService(Intent(context, HidService::class.java))
             } catch (_: Exception) {
                 // API 31+ forbids foreground-service starts from the
-                // background (e.g. a host auto-reconnecting while Helm is
+                // background (e.g. a host auto-reconnecting while Solstein is
                 // not on screen). MainActivity.onResume retries.
             }
         }

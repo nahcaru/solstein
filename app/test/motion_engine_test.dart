@@ -1,10 +1,10 @@
 import 'dart:math' as math;
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:helm/core/input_event.dart';
-import 'package:helm/motion/motion_config.dart';
-import 'package:helm/motion/motion_engine.dart';
-import 'package:helm/motion/motion_sample.dart';
+import 'package:solstein/core/input_event.dart';
+import 'package:solstein/motion/motion_config.dart';
+import 'package:solstein/motion/motion_engine.dart';
+import 'package:solstein/motion/motion_sample.dart';
 
 /// A sample stream (100 Hz by default). Defaults to a phone lying face-up and
 /// still: the accelerometer reads +Z (specific force points up), gyro is

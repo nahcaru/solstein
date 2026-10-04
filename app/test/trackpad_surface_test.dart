@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:helm/core/input_event.dart';
-import 'package:helm/core/input_sink.dart';
-import 'package:helm/engine/gesture_config.dart';
-import 'package:helm/ui/trackpad_surface.dart';
+import 'package:solstein/core/input_event.dart';
+import 'package:solstein/core/input_sink.dart';
+import 'package:solstein/engine/gesture_config.dart';
+import 'package:solstein/ui/trackpad_surface.dart';
 
 /// Captures what the transport would have sent.
 class FakeSink implements InputSink {

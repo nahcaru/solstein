@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:helm/hid/keymap.dart';
-import 'package:helm/hid/layouts.dart';
+import 'package:solstein/hid/keymap.dart';
+import 'package:solstein/hid/layouts.dart';
 
 void main() {
   final us = hostLayouts[HostLayoutId.us]!;

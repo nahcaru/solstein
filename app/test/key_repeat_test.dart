@@ -1,7 +1,7 @@
 import 'package:fake_async/fake_async.dart';
 import 'package:flutter/gestures.dart' show kLongPressTimeout;
 import 'package:flutter_test/flutter_test.dart';
-import 'package:helm/ui/key_repeat.dart';
+import 'package:solstein/ui/key_repeat.dart';
 
 void main() {
   test('backspace rate: 40 ms repeat interval', () {

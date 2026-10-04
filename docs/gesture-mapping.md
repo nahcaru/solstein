@@ -79,5 +79,5 @@ Since the collapsed shortcuts toggle host modes, the transport keeps a host-mode
 - [joshuarli/iss](https://github.com/joshuarli/iss) — minimal synthetic dock-swipe (Begin+End, high velocity); best starting point
 - [noah-nuebling/mac-mouse-fix](https://github.com/noah-nuebling/mac-mouse-fix) — production phased scrubbing. **MMF License restricts reuse: technique reference only, do not copy code**
 - Path A references: [ginkage/wearmouse](https://github.com/ginkage/wearmouse) (canonical `BluetoothHidDevice` sample, Apache-2.0), [jqssun/android-bt-remote](https://github.com/jqssun/android-bt-remote)
-- Descriptor validation: [Eleccelerator parser](https://eleccelerator.com/usbdescreqparser/) — run `HELM_DESCRIPTOR` through it before first pairing test
+- Descriptor validation: [Eleccelerator parser](https://eleccelerator.com/usbdescreqparser/) — run `SOLSTEIN_DESCRIPTOR` through it before first pairing test
 - v2 BLE candidate: [`bluetooth_low_energy`](https://pub.dev/packages/bluetooth_low_energy) (PeripheralManager on Android & iOS) — evaluate before writing custom GATT channels

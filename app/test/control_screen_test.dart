@@ -1,18 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:helm/app_model.dart';
-import 'package:helm/core/control_mode.dart';
-import 'package:helm/core/input_event.dart';
-import 'package:helm/core/input_sink.dart';
-import 'package:helm/hid/keymap.dart';
-import 'package:helm/presenter/presenter_host.dart';
-import 'package:helm/transport/hid_transport.dart';
-import 'package:helm/ui/control_screen.dart';
-import 'package:helm/ui/keyboard_screen.dart';
-import 'package:helm/ui/media_surface.dart';
-import 'package:helm/ui/presenter_surface.dart';
-import 'package:helm/ui/trackpad_surface.dart';
+import 'package:solstein/app_model.dart';
+import 'package:solstein/core/control_mode.dart';
+import 'package:solstein/core/input_event.dart';
+import 'package:solstein/core/input_sink.dart';
+import 'package:solstein/hid/keymap.dart';
+import 'package:solstein/presenter/presenter_host.dart';
+import 'package:solstein/transport/hid_transport.dart';
+import 'package:solstein/ui/control_screen.dart';
+import 'package:solstein/ui/keyboard_screen.dart';
+import 'package:solstein/ui/media_surface.dart';
+import 'package:solstein/ui/presenter_surface.dart';
+import 'package:solstein/ui/trackpad_surface.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'support/fake_motion_source.dart';
@@ -47,8 +47,8 @@ class _NoMediaTransport extends HidTransport {
 }
 
 void main() {
-  const hidChannel = MethodChannel('dev.taira.helm/hid');
-  const stateChannel = MethodChannel('dev.taira.helm/hid_state');
+  const hidChannel = MethodChannel('dev.taira.solstein/hid');
+  const stateChannel = MethodChannel('dev.taira.solstein/hid_state');
   late AppModel model;
   late FakePresenterHost presenterHost;
 

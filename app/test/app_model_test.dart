@@ -1,8 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:helm/app_model.dart';
-import 'package:helm/hid/keymap.dart';
-import 'package:helm/hid/shortcut_tables.dart';
-import 'package:helm/presenter/presenter_host.dart';
+import 'package:solstein/app_model.dart';
+import 'package:solstein/hid/keymap.dart';
+import 'package:solstein/hid/shortcut_tables.dart';
+import 'package:solstein/presenter/presenter_host.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {

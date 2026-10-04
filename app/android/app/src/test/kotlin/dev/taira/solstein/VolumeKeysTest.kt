@@ -1,4 +1,4 @@
-package dev.taira.helm
+package dev.taira.solstein
 
 import android.view.KeyEvent
 import org.junit.Assert.assertEquals

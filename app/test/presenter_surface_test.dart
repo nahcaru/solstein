@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:helm/core/input_event.dart';
-import 'package:helm/core/input_sink.dart';
-import 'package:helm/hid/keymap.dart';
-import 'package:helm/motion/motion_sample.dart';
-import 'package:helm/motion/motion_session.dart';
-import 'package:helm/presenter/presenter_host.dart';
-import 'package:helm/ui/presenter_surface.dart';
+import 'package:solstein/core/input_event.dart';
+import 'package:solstein/core/input_sink.dart';
+import 'package:solstein/hid/keymap.dart';
+import 'package:solstein/motion/motion_sample.dart';
+import 'package:solstein/motion/motion_session.dart';
+import 'package:solstein/presenter/presenter_host.dart';
+import 'package:solstein/ui/presenter_surface.dart';
 
 import 'support/fake_motion_source.dart';
 import 'support/fake_presenter_host.dart';

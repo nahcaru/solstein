@@ -1,4 +1,4 @@
-package dev.taira.helm
+package dev.taira.solstein
 
 import android.Manifest
 import android.content.pm.PackageManager
@@ -165,8 +165,8 @@ class MainActivity : FlutterActivity(), HidManager.Listener {
     }
 
     companion object {
-        private const val METHOD_CHANNEL = "dev.taira.helm/hid"
-        private const val STATE_CHANNEL = "dev.taira.helm/hid_state"
+        private const val METHOD_CHANNEL = "dev.taira.solstein/hid"
+        private const val STATE_CHANNEL = "dev.taira.solstein/hid_state"
         private const val PERMISSION_REQUEST = 7001
     }
 }

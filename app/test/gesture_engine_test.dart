@@ -1,8 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:helm/core/input_event.dart';
-import 'package:helm/engine/gesture_config.dart';
-import 'package:helm/engine/gesture_engine.dart';
-import 'package:helm/engine/pointer_sample.dart';
+import 'package:solstein/core/input_event.dart';
+import 'package:solstein/engine/gesture_config.dart';
+import 'package:solstein/engine/gesture_engine.dart';
+import 'package:solstein/engine/pointer_sample.dart';
 
 PointerSample s(int id, SamplePhase phase, double x, double y, int ms) =>
     PointerSample(

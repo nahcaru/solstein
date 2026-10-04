@@ -1,4 +1,4 @@
-# Helm Wire Protocol v1 (BLE GATT — v2 feature)
+# Solstein Wire Protocol v1 (BLE GATT — v2 feature)
 
 Phone = GATT **server** (peripheral); helper = **central**. Desktop initiates reconnects; one phone can serve multiple desktops later.
 
@@ -6,7 +6,7 @@ Phone = GATT **server** (peripheral); helper = **central**. Desktop initiates re
 
 | Item | UUID | Properties |
 |---|---|---|
-| Helm Service | `bc238100-4863-464c-8835-090cf15967a6` | — |
+| Solstein Service | `bc238100-4863-464c-8835-090cf15967a6` | — |
 | Input | `bc238101-…` (same base) | Notify (phone → helper), binary packets |
 | Control | `bc238102-…` (same base) | Write (helper → phone): target OS, capability negotiation, haptic cues |
 | Info | `bc238103-…` (same base) | Read: protocol version, device name |

@@ -5,7 +5,7 @@
 Control a Mac with nothing installed on it.
 
 - [x] `flutter create` in `app/` + Kotlin `HidTransport` platform channel
-- [x] Combo HID descriptor registers; macOS pairs and sees "Helm"
+- [x] Combo HID descriptor registers; macOS pairs and sees "Solstein"
 - [x] Trackpad: pointer + acceleration, tap-click, 2-finger tap (right click), 2-finger scroll (v+h)
 - [x] Keyboard: US layout + modifier row
 - [x] 3-finger swipes → shortcut reports (target-OS table in Settings)

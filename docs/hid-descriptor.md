@@ -6,9 +6,9 @@ One combo device, three report IDs. The keyboard report is what makes gestures p
 
 ```kotlin
 val sdp = BluetoothHidDeviceAppSdpSettings(
-    "Helm", "Virtual trackpad & keyboard", "Helm",
+    "Solstein", "Virtual trackpad & keyboard", "Solstein",
     BluetoothHidDevice.SUBCLASS1_COMBO,   // combo — not MOUSE/KEYBOARD alone
-    HELM_DESCRIPTOR
+    SOLSTEIN_DESCRIPTOR
 )
 hidDevice.registerApp(sdp, null, null, executor, callback)
 ```
@@ -20,7 +20,7 @@ hidDevice.registerApp(sdp, null, null, executor, callback)
 ## Descriptor bytes
 
 ```kotlin
-val HELM_DESCRIPTOR = byteArrayOf(
+val SOLSTEIN_DESCRIPTOR = byteArrayOf(
     // ---------- Report ID 1: Mouse ----------
     0x05, 0x01,        // Usage Page (Generic Desktop)
     0x09, 0x02,        // Usage (Mouse)

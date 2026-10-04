@@ -1,14 +1,14 @@
-package dev.taira.helm
+package dev.taira.solstein
 
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
 /**
- * Pins HELM_DESCRIPTOR byte-for-byte against docs/hid-descriptor.md.
+ * Pins SOLSTEIN_DESCRIPTOR byte-for-byte against docs/hid-descriptor.md.
  * Descriptor bugs are silent (pairing succeeds, input never arrives), and
  * macOS caches the descriptor per bond — so drift must fail loudly here.
  */
-class HelmHidDescriptorTest {
+class SolsteinHidDescriptorTest {
 
     private val golden = (
         // Report ID 1: Mouse
@@ -29,17 +29,17 @@ class HelmHidDescriptorTest {
 
     @Test
     fun descriptorMatchesGoldenBytes() {
-        assertEquals(golden.toHex(), HelmHidDescriptor.BYTES.toHex())
+        assertEquals(golden.toHex(), SolsteinHidDescriptor.BYTES.toHex())
     }
 
     @Test
     fun releasePayloadsMatchReportSizes() {
-        assertEquals(5, HelmHidDescriptor.MOUSE_RELEASE_ALL.size)   // buttons + X/Y/wheel/pan
-        assertEquals(8, HelmHidDescriptor.KEYBOARD_RELEASE_ALL.size) // mods + reserved + 6 keys
-        assertEquals(1, HelmHidDescriptor.CONSUMER_RELEASE_ALL.size) // 8 media bits
-        assertEquals(0, HelmHidDescriptor.MOUSE_RELEASE_ALL.sumOf { it.toInt() })
-        assertEquals(0, HelmHidDescriptor.KEYBOARD_RELEASE_ALL.sumOf { it.toInt() })
-        assertEquals(0, HelmHidDescriptor.CONSUMER_RELEASE_ALL.sumOf { it.toInt() })
+        assertEquals(5, SolsteinHidDescriptor.MOUSE_RELEASE_ALL.size)   // buttons + X/Y/wheel/pan
+        assertEquals(8, SolsteinHidDescriptor.KEYBOARD_RELEASE_ALL.size) // mods + reserved + 6 keys
+        assertEquals(1, SolsteinHidDescriptor.CONSUMER_RELEASE_ALL.size) // 8 media bits
+        assertEquals(0, SolsteinHidDescriptor.MOUSE_RELEASE_ALL.sumOf { it.toInt() })
+        assertEquals(0, SolsteinHidDescriptor.KEYBOARD_RELEASE_ALL.sumOf { it.toInt() })
+        assertEquals(0, SolsteinHidDescriptor.CONSUMER_RELEASE_ALL.sumOf { it.toInt() })
     }
 
     private fun ByteArray.toHex() = joinToString(" ") { "%02X".format(it) }

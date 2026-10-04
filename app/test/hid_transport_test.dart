@@ -1,15 +1,15 @@
 import 'package:fake_async/fake_async.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:helm/core/input_event.dart';
-import 'package:helm/core/input_sink.dart';
-import 'package:helm/hid/shortcut_tables.dart';
-import 'package:helm/transport/hid_transport.dart';
+import 'package:solstein/core/input_event.dart';
+import 'package:solstein/core/input_sink.dart';
+import 'package:solstein/hid/shortcut_tables.dart';
+import 'package:solstein/transport/hid_transport.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  const channel = MethodChannel('dev.taira.helm/hid');
+  const channel = MethodChannel('dev.taira.solstein/hid');
   late List<(String, Uint8List?)> calls;
   late HidTransport transport;
 

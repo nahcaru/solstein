@@ -20,7 +20,7 @@
 └────────┬──────────────────────┬─────────────┘
          │ BT Classic HID       │ BLE GATT
          ▼                      ▼
-   Any OS natively        Helm Helper (helper/, v2)
+   Any OS natively        Solstein Helper (helper/, v2)
    (mac/Win/Linux,        Flutter desktop, BLE central
     zero install)         → native input injection
 ```

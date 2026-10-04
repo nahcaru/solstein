@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:helm/core/input_event.dart';
-import 'package:helm/hid/keymap.dart';
-import 'package:helm/hid/shortcut_tables.dart';
+import 'package:solstein/core/input_event.dart';
+import 'package:solstein/hid/keymap.dart';
+import 'package:solstein/hid/shortcut_tables.dart';
 
 void main() {
   group('shortcut tables', () {

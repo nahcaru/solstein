@@ -127,7 +127,7 @@ class _ControlScreenState extends State<ControlScreen>
 
   Widget _backButton(AppModel model) => IconButton(
         // Back to the device list; the Bluetooth link itself stays up —
-        // connection state is managed from the OS settings, not Helm.
+        // connection state is managed from the OS settings, not Solstein.
         icon: const Icon(Icons.arrow_back),
         tooltip: 'Back to device list',
         onPressed: model.closeControl,

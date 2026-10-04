@@ -1,17 +1,21 @@
-# Helm
+# Solstein
 
-Turn your Android phone (iPhone planned) into a Bluetooth trackpad + keyboard for your Mac — no software to install on the computer.
+> Turn your phone into a Bluetooth trackpad
 
-Helm emulates a real Bluetooth HID device: your Mac (or Windows/Linux machine) pairs with it like ordinary hardware. It works from the login screen, offline, with no helper app. A later optional desktop helper unlocks iOS clients and native-feeling interactive trackpad gestures.
+Solstein emulates a real Bluetooth HID device: your computer (Mac, Windows, or Linux) pairs with it like ordinary hardware — with **zero software to install on the computer**. It works from the login screen, completely offline, with no helper app required. A later optional desktop helper unlocks iOS clients and native-feeling interactive trackpad gestures.
+
+## About the Name
+
+Named after the **sunstone** (*sólarsteinn*) — the legendary optical crystal used by Viking navigators to locate the sun through overcast skies and dense sea fog. Just as Norse voyagers navigated their ships through invisible light, Solstein transforms your mobile screen into a precise instrument to guide your computer over invisible Bluetooth waves.
 
 ## Status
 
-🚧 Design phase — see [docs/roadmap.md](docs/roadmap.md).
+🚧 In development — see [docs/roadmap.md](docs/roadmap.md).
 
 ## Layout
 
 ```
-app/     Flutter client (Android first)     — not yet scaffolded, see CLAUDE.md Bootstrap
+app/     Flutter client (Android first)
 helper/  Flutter desktop helper (v2)        — placeholder
 docs/    Architecture, HID spec, protocol, gesture mapping, ADRs, roadmap
 ```

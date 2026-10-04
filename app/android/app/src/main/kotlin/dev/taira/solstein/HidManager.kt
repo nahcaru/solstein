@@ -1,4 +1,4 @@
-package dev.taira.helm
+package dev.taira.solstein
 
 import android.annotation.SuppressLint
 import android.bluetooth.BluetoothAdapter
@@ -47,7 +47,7 @@ object HidManager {
     // sendReport is a blocking binder call; on the main thread it stalled
     // touch dispatch. One serial queue keeps mouse/keyboard/consumer order.
     private val sendHandler: Handler by lazy {
-        Handler(HandlerThread("helm-hid-send").apply { start() }.looper)
+        Handler(HandlerThread("solstein-hid-send").apply { start() }.looper)
     }
 
     val isConnected: Boolean get() = connectedDevice != null
@@ -62,7 +62,7 @@ object HidManager {
         post(State.ERROR)
     }
 
-    /** Opens the HID profile proxy and registers the Helm SDP record. */
+    /** Opens the HID profile proxy and registers the Solstein SDP record. */
     fun start(context: Context) {
         if (registered || starting) return
         starting = true
@@ -97,11 +97,11 @@ object HidManager {
     private fun registerApp() {
         val hid = hidDevice ?: return
         val sdp = BluetoothHidDeviceAppSdpSettings(
-            "Helm",
+            "Solstein",
             "Virtual trackpad & keyboard",
-            "Helm",
+            "Solstein",
             BluetoothHidDevice.SUBCLASS1_COMBO,
-            HelmHidDescriptor.BYTES,
+            SolsteinHidDescriptor.BYTES,
         )
         val ok = hid.registerApp(sdp, null, null, executor, callback)
         if (!ok) fail("Failed to register the HID app with the Bluetooth stack")
@@ -207,19 +207,19 @@ object HidManager {
     }
 
     fun releaseAll() {
-        sendMouseReport(HelmHidDescriptor.MOUSE_RELEASE_ALL)
-        sendKeyboardReport(HelmHidDescriptor.KEYBOARD_RELEASE_ALL)
-        sendConsumerReport(HelmHidDescriptor.CONSUMER_RELEASE_ALL)
+        sendMouseReport(SolsteinHidDescriptor.MOUSE_RELEASE_ALL)
+        sendKeyboardReport(SolsteinHidDescriptor.KEYBOARD_RELEASE_ALL)
+        sendConsumerReport(SolsteinHidDescriptor.CONSUMER_RELEASE_ALL)
     }
 
     fun sendMouseReport(payload: ByteArray) =
-        sendReport(HelmHidDescriptor.REPORT_ID_MOUSE, payload)
+        sendReport(SolsteinHidDescriptor.REPORT_ID_MOUSE, payload)
 
     fun sendKeyboardReport(payload: ByteArray) =
-        sendReport(HelmHidDescriptor.REPORT_ID_KEYBOARD, payload)
+        sendReport(SolsteinHidDescriptor.REPORT_ID_KEYBOARD, payload)
 
     fun sendConsumerReport(payload: ByteArray) =
-        sendReport(HelmHidDescriptor.REPORT_ID_CONSUMER, payload)
+        sendReport(SolsteinHidDescriptor.REPORT_ID_CONSUMER, payload)
 
     /**
      * Fire-and-forget. The proxy and host are captured at post time so a

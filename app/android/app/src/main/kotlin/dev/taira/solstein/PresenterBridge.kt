@@ -1,4 +1,4 @@
-package dev.taira.helm
+package dev.taira.solstein
 
 import android.app.Activity
 import android.view.KeyEvent
@@ -100,7 +100,7 @@ class PresenterBridge(private val activity: Activity) : EventChannel.StreamHandl
     }
 
     companion object {
-        private const val METHOD_CHANNEL = "dev.taira.helm/presenter"
-        private const val KEYS_CHANNEL = "dev.taira.helm/presenter_keys"
+        private const val METHOD_CHANNEL = "dev.taira.solstein/presenter"
+        private const val KEYS_CHANNEL = "dev.taira.solstein/presenter_keys"
     }
 }

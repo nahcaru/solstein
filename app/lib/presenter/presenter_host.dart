@@ -57,8 +57,8 @@ abstract interface class PresenterHost {
 
 /// Android implementation (PresenterBridge.kt).
 class MethodChannelPresenterHost implements PresenterHost {
-  static const _channel = MethodChannel('dev.taira.helm/presenter');
-  static const _keys = EventChannel('dev.taira.helm/presenter_keys');
+  static const _channel = MethodChannel('dev.taira.solstein/presenter');
+  static const _keys = EventChannel('dev.taira.solstein/presenter_keys');
 
   @override
   Future<void> setKeepScreenOn(bool on) =>

@@ -37,14 +37,14 @@ class DiagnosticsScreen extends StatelessWidget {
                 ),
               const SizedBox(height: 12),
               const Text(
-                'Helm works by emulating a Bluetooth trackpad and keyboard '
+                'Solstein works by emulating a Bluetooth trackpad and keyboard '
                 '(the HID Device profile). A few manufacturers disable this '
                 'profile in their Android build.\n\n'
                 'Things to try:\n'
-                '• Toggle Bluetooth off and on, then reopen Helm\n'
+                '• Toggle Bluetooth off and on, then reopen Solstein\n'
                 '• Check for a system update\n'
                 '• If the error persists, this phone\'s Bluetooth stack '
-                'likely cannot host HID — a future Helm release adds a '
+                'likely cannot host HID — a future Solstein release adds a '
                 'BLE + desktop-helper mode that works everywhere.',
               ),
             ],

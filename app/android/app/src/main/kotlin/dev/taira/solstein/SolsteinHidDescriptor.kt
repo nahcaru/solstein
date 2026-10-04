@@ -1,14 +1,14 @@
-package dev.taira.helm
+package dev.taira.solstein
 
 /**
  * Combo HID report descriptor: mouse (report ID 1) + keyboard (report ID 2).
  * Byte-for-byte from docs/hid-descriptor.md — validated with the
  * Eleccelerator parser. Descriptor bugs are silent (device pairs, inputs
- * never arrive), so HelmHidDescriptorTest pins these bytes.
+ * never arrive), so SolsteinHidDescriptorTest pins these bytes.
  *
  * No Android imports here: this must stay testable on the plain JVM.
  */
-object HelmHidDescriptor {
+object SolsteinHidDescriptor {
     const val REPORT_ID_MOUSE = 1
     const val REPORT_ID_KEYBOARD = 2
     const val REPORT_ID_CONSUMER = 3

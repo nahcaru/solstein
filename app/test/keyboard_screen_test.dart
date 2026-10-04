@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:helm/core/input_event.dart';
-import 'package:helm/core/input_sink.dart';
-import 'package:helm/hid/keymap.dart';
-import 'package:helm/hid/layouts.dart';
-import 'package:helm/hid/shortcut_tables.dart';
-import 'package:helm/ui/keyboard_screen.dart';
+import 'package:solstein/core/input_event.dart';
+import 'package:solstein/core/input_sink.dart';
+import 'package:solstein/hid/keymap.dart';
+import 'package:solstein/hid/layouts.dart';
+import 'package:solstein/hid/shortcut_tables.dart';
+import 'package:solstein/ui/keyboard_screen.dart';
 
 /// Captures what the transport would have sent.
 class FakeSink implements InputSink {

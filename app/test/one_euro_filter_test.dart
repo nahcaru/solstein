@@ -1,7 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:helm/motion/one_euro_filter.dart';
+import 'package:solstein/motion/one_euro_filter.dart';
 
 /// RMS of a filtered sinusoid (after the transient), relative to the input's.
 double gainAt(OneEuroFilter f, double hz,

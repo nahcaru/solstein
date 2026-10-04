@@ -1,4 +1,6 @@
-# Helm
+# Solstein
+
+> Turn your phone into a Bluetooth trackpad
 
 ## Purpose
 

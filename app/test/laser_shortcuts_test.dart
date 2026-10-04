@@ -1,8 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:helm/hid/keymap.dart';
-import 'package:helm/hid/laser_shortcuts.dart';
-import 'package:helm/hid/layouts.dart';
-import 'package:helm/hid/shortcut_tables.dart';
+import 'package:solstein/hid/keymap.dart';
+import 'package:solstein/hid/laser_shortcuts.dart';
+import 'package:solstein/hid/layouts.dart';
+import 'package:solstein/hid/shortcut_tables.dart';
 
 void main() {
   // HID Keyboard/Keypad page usages (USB HID Usage Tables): C = 0x06, L = 0x0F.

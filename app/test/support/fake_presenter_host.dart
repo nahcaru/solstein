@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:helm/presenter/presenter_host.dart';
+import 'package:solstein/presenter/presenter_host.dart';
 
 /// Records what presenter mode asks of the phone and lets a test press keys.
 class FakePresenterHost implements PresenterHost {

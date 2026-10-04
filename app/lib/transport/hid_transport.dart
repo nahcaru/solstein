@@ -20,8 +20,8 @@ class HidTransport implements InputSink {
         .listen(_state.add, onError: (Object _) => _state.add(SinkState.error));
   }
 
-  static const _channel = MethodChannel('dev.taira.helm/hid');
-  static const _stateChannel = EventChannel('dev.taira.helm/hid_state');
+  static const _channel = MethodChannel('dev.taira.solstein/hid');
+  static const _stateChannel = EventChannel('dev.taira.solstein/hid_state');
 
   /// Which shortcut table 3-finger swipes resolve against (Settings toggle).
   TargetOs targetOs;

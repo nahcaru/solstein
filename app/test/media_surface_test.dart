@@ -1,14 +1,14 @@
 import 'package:flutter/gestures.dart' show kLongPressTimeout;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:helm/core/input_event.dart';
-import 'package:helm/core/input_sink.dart';
-import 'package:helm/hid/keymap.dart';
-import 'package:helm/hid/layouts.dart';
-import 'package:helm/hid/player_shortcuts.dart';
-import 'package:helm/presenter/presenter_host.dart';
-import 'package:helm/ui/key_repeat.dart';
-import 'package:helm/ui/media_surface.dart';
+import 'package:solstein/core/input_event.dart';
+import 'package:solstein/core/input_sink.dart';
+import 'package:solstein/hid/keymap.dart';
+import 'package:solstein/hid/layouts.dart';
+import 'package:solstein/hid/player_shortcuts.dart';
+import 'package:solstein/presenter/presenter_host.dart';
+import 'package:solstein/ui/key_repeat.dart';
+import 'package:solstein/ui/media_surface.dart';
 
 import 'support/fake_presenter_host.dart';
 

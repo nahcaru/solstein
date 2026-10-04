@@ -1,7 +1,7 @@
 import 'dart:async';
 
-import 'package:helm/motion/motion_sample.dart';
-import 'package:helm/motion/motion_source.dart';
+import 'package:solstein/motion/motion_sample.dart';
+import 'package:solstein/motion/motion_source.dart';
 
 /// Scriptable [MotionSource]: tests push samples or errors by hand.
 class FakeMotionSource implements MotionSource {
