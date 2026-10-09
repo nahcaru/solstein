@@ -410,3 +410,43 @@ The research was delegated to Antigravity and then checked against the vendor pa
 - On Netflix the Captions button does nothing; on VLC the seek buttons do nothing useful.
 - Mac-native players (QuickTime, Apple TV app) and mpv/IINA are not verified here and may or may not respond to the same keys.
 - A now-playing display remains out of reach until the v2 helper (roadmap).
+
+---
+
+## ADR-015: Brand identity & multi-platform app icon architecture
+
+**Status**: Accepted
+**Date**: 2026-10-10
+
+### Context
+
+Solstein needed an official brand identity, master vector artwork, and production app icons across mobile, desktop, and web platforms. The metaphor derives from the *sólarsteinn* (Viking sunstone) — Iceland spar optical calcite used to navigate through dense clouds and sea fog via polarization.
+
+The design had to satisfy several platform constraints:
+1. **Android 8+ Adaptive Icons**: Requires separate background and foreground layers, a 66% safe zone diameter, and an Android 13+ Material You monochrome silhouette for themed icons.
+2. **Apple App Store & iOS 18**: Prohibits alpha transparency on standard icons (24-bit RGB opaque), enforces OS-level squircle masking (nested card/squircle causes a "matryoshka" double-squircle artifact), and introduces iOS 18 Dark and Tinted (grayscale) modes.
+3. **Web Favicons**: Requires legibility down to 16×16 and 32×32 pixels in browser tabs.
+
+### Decision
+
+1. **Adopt Concept #2 "The Double-Refraction Cursor"**:
+   - Primary optical calcite pointer casting a birefringent ghost twin image.
+   - Left pointer contour traces the Younger Futhark Sól (`ᛋ`) rune in Nordic cyan (`#38BDF8`).
+   - Symmetrically mirrored solar amber contour (`#F59E0B`) on the right.
+   - Internal prismatic rainbow caustics (dispersion) refracted where the ghost pointer shines through the crystal.
+   - Continuous 12px white-hot core rail and beveled crystal facet ridges.
+
+2. **Differentiate Presentation Logo vs. Production App Icon**:
+   - **Presentation Logo (`docs/assets/logo.svg`)**: Keeps the card-on-dark-canvas aesthetic with drop shadows for website showcase and documentation posters.
+   - **Production App Icon (`docs/assets/icon-fullbleed.svg`, `app/assets/icon/icon.png`)**: Eliminates the outer dark canvas margin and card shadow. The dark metallic trackpad surface (`#232C3C` → `#080C14`) expands full-bleed across 1024×1024, preventing the nested double-squircle issue on iOS and maximizing icon visual scale.
+
+3. **Multi-Platform Asset Architecture**:
+   - **Android**: Generated via `flutter_launcher_icons` with `adaptive_icon_foreground_inset: 0` (respecting the built-in safe zone), full-bleed `icon_background.png`, transparent `icon_foreground.png`, and pure white `icon_monochrome.png`.
+   - **iOS**: Automated Xcode Asset Catalog (`AppIcon.appiconset`) with universal 1024×1024 single-size, all legacy iPhone/iPad scales, iOS 18 Dark mode (`icon_ios_dark.png`), and iOS 18 Tinted grayscale (`icon_ios_tinted.png`).
+   - **Web Favicon**: Multi-resolution `favicon.ico` (16, 32, 48px), `favicon-32x32.png`, `favicon-16x16.png`, and `apple-touch-icon.png` (180×180).
+
+### Consequences
+
+- App icons appear native, crisp, and properly scaled on all platforms without double-squircle margins.
+- Assets are reproducible via `uv run python scripts/build_app_icons.py`.
+

@@ -28,6 +28,7 @@ Control a Mac with nothing installed on it.
       — CJK itself already works via the host's IME (see ADR-006). Other
       layouts (French, German, Thai, Arabic, etc.) deferred by design until
       someone has a real host to verify against (see ADR-007)
+- [x] Brand Identity & App Icon System (ADR-015): The Double-Refraction Cursor (Concept #2) vector suite, full-bleed native app icon, Android Adaptive + Material You monochrome themed icon, iOS 18 AppIcon catalog, and web favicons.
 - [ ] Onboarding, haptics, theming; Play Store release
 - [x] Media control mode (ADR-012): a couch-remote surface (play/pause, prev/next, volume and mute buttons) beside Trackpad and Presenter, with the phone's volume keys driving the host's volume. Verified on a phone.
 - [ ] Media player keys (ADR-013): seek back/forward (←/→), captions (C) and fullscreen (F) buttons in Media mode. The key set is confirmed against YouTube's, Netflix's and Prime Video's own shortcut pages; still to try on a phone. Players that differ (VLC: Shift/Alt/Ctrl + arrow, V for subtitles; Spotify: Shift + arrow) would need a second key set and a way to choose it — not built.

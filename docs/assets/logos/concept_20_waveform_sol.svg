@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bg20" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0A101D"/>
+      <stop offset="100%" stop-color="#020408"/>
+    </linearGradient>
+    <linearGradient id="waveGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#0284C7" stop-opacity="0.3"/>
+      <stop offset="25%" stop-color="#38BDF8"/>
+      <stop offset="50%" stop-color="#F59E0B"/>
+      <stop offset="75%" stop-color="#38BDF8"/>
+      <stop offset="100%" stop-color="#0284C7" stop-opacity="0.3"/>
+    </linearGradient>
+    <filter id="neon20" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg20)" stroke="#1E293B" stroke-width="2"/>
+
+  <!-- Frequency Grid Lines -->
+  <g stroke="#1E293B" stroke-width="1" stroke-dasharray="4 6">
+    <line x1="80" y1="180" x2="432" y2="180"/>
+    <line x1="80" y1="256" x2="432" y2="256"/>
+    <line x1="80" y1="332" x2="432" y2="332"/>
+  </g>
+
+  <!-- Continuous RF Wave snapping into the ᛋ Rune -->
+  <!-- Wave entering from (70, 256) -> crest (120, 200) -> trough (170, 312) -> jumps into ᛋ (200, 150) -> (312, 230) -> (200, 290) -> (312, 370) -> exits to wave (360, 200) -> (442, 256) -->
+  <path d="M 60 256 C 90 256 110 200 140 200 C 165 200 175 256 195 256 
+           L 205 140 L 315 220 L 195 292 L 305 372 
+           C 325 372 335 312 355 312 C 385 312 405 256 452 256" 
+        fill="none" stroke="url(#waveGrad)" stroke-width="14" 
+        stroke-linecap="round" stroke-linejoin="round" filter="url(#neon20)"/>
+  
+  <path d="M 60 256 C 90 256 110 200 140 200 C 165 200 175 256 195 256 
+           L 205 140 L 315 220 L 195 292 L 305 372 
+           C 325 372 335 312 355 312 C 385 312 405 256 452 256" 
+        fill="none" stroke="#FFFFFF" stroke-width="3.5" 
+        stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Packet Node Dots -->
+  <circle cx="205" cy="140" r="5" fill="#FBBF24"/>
+  <circle cx="315" cy="220" r="5" fill="#38BDF8"/>
+  <circle cx="195" cy="292" r="5" fill="#FBBF24"/>
+  <circle cx="305" cy="372" r="5" fill="#38BDF8"/>
+</svg>

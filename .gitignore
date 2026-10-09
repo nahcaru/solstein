@@ -13,3 +13,9 @@ helper/.dart_tool/
 
 # FVM Version Cache
 .fvm/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/

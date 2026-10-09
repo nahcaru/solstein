@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <radialGradient id="bg15" cx="50%" cy="50%" r="75%">
+      <stop offset="0%" stop-color="#1E293B"/>
+      <stop offset="60%" stop-color="#0F172A"/>
+      <stop offset="100%" stop-color="#05080E"/>
+    </radialGradient>
+    <linearGradient id="lightningSol" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFFBEB"/>
+      <stop offset="30%" stop-color="#FDE68A"/>
+      <stop offset="60%" stop-color="#F59E0B"/>
+      <stop offset="100%" stop-color="#D97706"/>
+    </linearGradient>
+    <filter id="intenseGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="16" result="blur1"/>
+      <feGaussianBlur stdDeviation="6" result="blur2"/>
+      <feMerge>
+        <feMergeNode in="blur1"/>
+        <feMergeNode in="blur2"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg15)" stroke="#1E293B" stroke-width="2"/>
+
+  <!-- Atmospheric cloud rings (overcast shield) -->
+  <circle cx="256" cy="256" r="180" fill="none" stroke="#334155" stroke-width="1.5" stroke-dasharray="6 8" opacity="0.4"/>
+  <circle cx="256" cy="256" r="140" fill="none" stroke="#475569" stroke-width="2" stroke-dasharray="12 12" opacity="0.3"/>
+  <circle cx="256" cy="256" r="90" fill="#0F172A" opacity="0.6"/>
+
+  <!-- Radial cloud mist bursts -->
+  <path d="M 256 76 L 256 116 M 256 396 L 256 436 M 76 256 L 116 256 M 396 256 L 436 256" 
+        stroke="#64748B" stroke-width="2" stroke-linecap="round" opacity="0.4"/>
+
+  <!-- Piercing Golden Sól Rune Lightning -->
+  <!-- 3-stroke zigzag: (210, 110) -> (320, 210) -> (192, 302) -> (302, 402) -->
+  <path d="M 210 110 L 320 210 L 192 302 L 302 402" 
+        fill="none" stroke="#F59E0B" stroke-width="36" 
+        stroke-linecap="round" stroke-linejoin="round" opacity="0.3" filter="url(#intenseGlow)"/>
+  <path d="M 210 110 L 320 210 L 192 302 L 302 402" 
+        fill="none" stroke="url(#lightningSol)" stroke-width="18" 
+        stroke-linecap="round" stroke-linejoin="round" filter="url(#intenseGlow)"/>
+  <path d="M 210 110 L 320 210 L 192 302 L 302 402" 
+        fill="none" stroke="#FFFFFF" stroke-width="6" 
+        stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

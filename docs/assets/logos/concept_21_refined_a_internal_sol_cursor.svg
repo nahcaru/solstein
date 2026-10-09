@@ -1,0 +1,87 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <radialGradient id="bgA" cx="50%" cy="50%" r="70%">
+      <stop offset="0%" stop-color="#162032"/>
+      <stop offset="60%" stop-color="#0B0F17"/>
+      <stop offset="100%" stop-color="#04060A"/>
+    </radialGradient>
+    
+    <!-- Ghost Cursor Gradient (Birefringence dispersion) -->
+    <linearGradient id="ghostGradA" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38BDF8" stop-opacity="0.6"/>
+      <stop offset="50%" stop-color="#0284C7" stop-opacity="0.4"/>
+      <stop offset="100%" stop-color="#F59E0B" stop-opacity="0.3"/>
+    </linearGradient>
+
+    <!-- Crystal Body Gradient -->
+    <linearGradient id="crystalBody" x1="20%" y1="0%" x2="80%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.95"/>
+      <stop offset="30%" stop-color="#E2E8F0" stop-opacity="0.85"/>
+      <stop offset="70%" stop-color="#CBD5E1" stop-opacity="0.75"/>
+      <stop offset="100%" stop-color="#94A3B8" stop-opacity="0.9"/>
+    </linearGradient>
+
+    <!-- Solar Amber Rune Ridge -->
+    <linearGradient id="solCore" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFFBEB"/>
+      <stop offset="40%" stop-color="#FBBF24"/>
+      <stop offset="80%" stop-color="#F59E0B"/>
+      <stop offset="100%" stop-color="#D97706"/>
+    </linearGradient>
+
+    <filter id="shadowA" x="-20%" y="-20%" width="150%" height="150%">
+      <feDropShadow dx="0" dy="18" stdDeviation="16" flood-color="#000000" flood-opacity="0.75"/>
+    </filter>
+
+    <filter id="runeGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Squircle Base Tile -->
+  <rect width="512" height="512" rx="116" fill="url(#bgA)" stroke="#1E293B" stroke-width="2"/>
+
+  <!-- Optical Birefringence Dispersion Rays -->
+  <line x1="160" y1="110" x2="190" y2="145" stroke="#38BDF8" stroke-width="1.5" stroke-dasharray="4 4" opacity="0.6"/>
+  <line x1="315" y1="265" x2="345" y2="300" stroke="#F59E0B" stroke-width="1.5" stroke-dasharray="4 4" opacity="0.6"/>
+  <line x1="290" y1="385" x2="320" y2="420" stroke="#38BDF8" stroke-width="1.5" stroke-dasharray="4 4" opacity="0.6"/>
+
+  <!-- Ghost Twin Cursor (Offset Birefringence Shadow) -->
+  <g transform="translate(32, 36)" opacity="0.55">
+    <path d="M 160 110 L 160 335 L 215 285 L 270 385 L 305 365 L 250 268 L 315 268 Z" 
+          fill="url(#ghostGradA)" stroke="#38BDF8" stroke-width="3" stroke-linejoin="round"/>
+  </g>
+
+  <!-- Primary Calcite Crystal Cursor Arrow -->
+  <g filter="url(#shadowA)">
+    <!-- Base Crystal Glass Body -->
+    <path d="M 160 110 L 160 335 L 215 285 L 270 385 L 305 365 L 250 268 L 315 268 Z" 
+          fill="url(#crystalBody)" stroke="#F8FAFC" stroke-width="6" stroke-linejoin="round"/>
+    
+    <!-- Chamfered Beveled Glass Highlights -->
+    <path d="M 160 110 L 160 335 L 215 285 Z" fill="#FFFFFF" fill-opacity="0.15"/>
+    <path d="M 160 110 L 315 268 L 250 268 Z" fill="#FFFFFF" fill-opacity="0.25"/>
+
+    <!-- INTERNAL FACET: The authentic Younger Futhark Sól (ᛋ) Rune Ridge -->
+    <!-- Top-right -> down-left -> down-right -> down-left -->
+    <!-- Stroke 1: (245, 175) -> (190, 225) [down-left] -->
+    <!-- Stroke 2: (190, 225) -> (240, 268) [down-right] -->
+    <!-- Stroke 3: (240, 268) -> (200, 318) [down-left] -->
+    <path d="M 245 175 L 190 225 L 240 268 L 200 318" 
+          fill="none" stroke="#F59E0B" stroke-width="18" 
+          stroke-linecap="round" stroke-linejoin="round" opacity="0.35" filter="url(#runeGlow)"/>
+    <path d="M 245 175 L 190 225 L 240 268 L 200 318" 
+          fill="none" stroke="url(#solCore)" stroke-width="8" 
+          stroke-linecap="round" stroke-linejoin="round" filter="url(#runeGlow)"/>
+    <path d="M 245 175 L 190 225 L 240 268 L 200 318" 
+          fill="none" stroke="#FFFFFF" stroke-width="2.5" 
+          stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <!-- Cyan specular edge reflection on the cursor blade -->
+  <line x1="160" y1="110" x2="160" y2="335" stroke="#38BDF8" stroke-width="2.5" opacity="0.8"/>
+</svg>

@@ -1,0 +1,16 @@
+flutter_launcher_icons:
+  android: true
+  # iOS Xcode project is not yet added to app/ (Flutter project currently targets Android).
+  # Set ios: true once `ios/` is added with `flutter create --platforms=ios .`
+  ios: false
+  image_path: "assets/icon/icon.png"
+  image_path_ios: "assets/icon/icon_ios.png"
+  image_path_ios_dark_transparent: "assets/icon/icon_ios_dark.png"
+  image_path_ios_tinted_grayscale: "assets/icon/icon_ios_tinted.png"
+  remove_alpha_ios: true
+  desaturate_tinted_to_grayscale_ios: true
+  min_sdk_android: 21
+  adaptive_icon_background: "assets/icon/icon_background.png"
+  adaptive_icon_foreground: "assets/icon/icon_foreground.png"
+  adaptive_icon_monochrome: "assets/icon/icon_monochrome.png"
+  adaptive_icon_foreground_inset: 0
